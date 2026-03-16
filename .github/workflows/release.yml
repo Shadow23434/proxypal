@@ -92,7 +92,7 @@ jobs:
           else
             tar -xzf "$ARCHIVE"
           fi
-          # Detect and copy correct binary (giữ nguyên phần fallback của bạn)
+          ls -la
           case "${{ matrix.target }}" in
             aarch64-apple-darwin)
               SRC_BINARY="cli-proxy-api-aarch64-apple-darwin"
@@ -108,19 +108,38 @@ jobs:
               ;;
           esac
           if [ -f "$SRC_BINARY" ]; then
+            echo "Found platform-specific binary: $SRC_BINARY"
             cp "$SRC_BINARY" "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
             chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY" 2>/dev/null || true
           elif [ -f "cli-proxy-api-plus" ]; then
             cp cli-proxy-api-plus "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
             chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
-          # ... (giữ nguyên tất cả fallback còn lại của bạn)
+          elif [ -f "cli-proxy-api-plus.exe" ]; then
+            cp cli-proxy-api-plus.exe "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "CLIProxyAPIPlus" ]; then
+            cp CLIProxyAPIPlus "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+            chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "CLIProxyAPIPlus.exe" ]; then
+            cp CLIProxyAPIPlus.exe "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "CLIProxyAPI" ]; then
+            cp CLIProxyAPI "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+            chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "CLIProxyAPI.exe" ]; then
+            cp CLIProxyAPI.exe "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "cli-proxy-api.exe" ]; then
+            cp cli-proxy-api.exe "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+          elif [ -f "cli-proxy-api" ]; then
+            cp cli-proxy-api "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
+            chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
           else
             FOUND=$(find . -type f \( -name "cli-proxy-api-plus" -o -name "CLIProxyAPIPlus" -o -name "CLIProxyAPI" -o -name "cli-proxy-api" -o -name "$SRC_BINARY" \) ! -name "*.tar.gz" ! -name "*.zip" ! -name "*.tgz" | head -1)
             if [ -n "$FOUND" ]; then
+              echo "Found binary via recursive search: $FOUND"
               cp "$FOUND" "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY"
               chmod +x "$GITHUB_WORKSPACE/src-tauri/binaries/$BINARY" 2>/dev/null || true
             else
               echo "ERROR: Binary not found!"
+              echo "Looking for: $SRC_BINARY"
               ls -laR
               exit 1
             fi
@@ -149,7 +168,7 @@ jobs:
             | Windows | `.exe` installer |
             | Windows (Portable) | `.zip` (no install required) |
             | Linux | `.deb` package |
-          releaseDraft: true          # ← ĐÃ SỬA: tạo draft trước
+          releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
           args: --target ${{ matrix.target }}
@@ -167,6 +186,9 @@ jobs:
             Compress-Archive -Path $exePath -DestinationPath $zipName
             gh release upload $version $zipName --clobber
             Write-Host "Uploaded portable zip: $zipName"
+          } else {
+            Write-Warning "Executable not found at $exePath"
+            Get-ChildItem -Recurse -Filter "*.exe" src-tauri/target | Select-Object FullName
           }
 
   generate-changelog:
@@ -186,20 +208,65 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # (giữ nguyên toàn bộ script generate changelog của bạn)
-          # ... (code dài của bạn giữ nguyên, tôi không thay đổi phần này)
+          set -e
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG="${{ github.ref_name }}"
+          PROXYPAL_CHANGES=""
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline "$PREV_TAG..$CURRENT_TAG" --pretty=format:"- %s" 2>/dev/null || echo "")
+            if [ -n "$COMMITS" ]; then
+              PROXYPAL_CHANGES="$COMMITS"
+            fi
+          fi
+          SIDECAR_RELEASE=$(gh release view --repo router-for-me/CLIProxyAPIPlus --json tagName,body 2>/dev/null || echo "{}")
+          SIDECAR_VERSION=$(echo "$SIDECAR_RELEASE" | jq -r '.tagName // "unknown"')
+          SIDECAR_BODY=$(echo "$SIDECAR_RELEASE" | jq -r '.body // ""')
+          echo "sidecar_version=$SIDECAR_VERSION" >> $GITHUB_OUTPUT
+          SIDECAR_HIGHLIGHTS=""
+          if [ -n "$SIDECAR_BODY" ]; then
+            SIDECAR_HIGHLIGHTS=$(echo "$SIDECAR_BODY" | grep -E '(fix|feat|Fixed|refactor)\(' | head -10 | sed 's/^- \[.*\] /- /' | sed 's/^/- /' || echo "")
+          fi
+          CHANGELOG="### ProxyPal Changes"
+          if [ -n "$PROXYPAL_CHANGES" ]; then
+            CHANGELOG="$CHANGELOG\n$PROXYPAL_CHANGES"
+          else
+            CHANGELOG="$CHANGELOG\n- Release $CURRENT_TAG"
+          fi
+          CHANGELOG="$CHANGELOG\n### Sidecar: CLIProxyAPIPlus $SIDECAR_VERSION"
+          if [ -n "$SIDECAR_HIGHLIGHTS" ]; then
+            CHANGELOG="$CHANGELOG\n$SIDECAR_HIGHLIGHTS"
+          fi
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
           echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
-
       - name: Update release body with changelog
         env:
           GH_TOKEN: ${{ github.token }}
           CHANGELOG: ${{ steps.changelog.outputs.changelog }}
           SIDECAR_VERSION: ${{ steps.changelog.outputs.sidecar_version }}
         run: |
-          # (giữ nguyên phần decode và tạo /tmp/release_body.md của bạn)
-          # ... (code của bạn)
+          DECODED_CHANGELOG=$(echo "$CHANGELOG" | sed 's/%0A/\n/g' | sed 's/%0D//g' | sed 's/%25/%/g')
+          {
+            echo "## What's New"
+            echo ""
+            echo "$DECODED_CHANGELOG"
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "| Platform | Download |"
+            echo "|----------|----------|"
+            echo "| macOS (Apple Silicon) | \`.dmg\` (aarch64) |"
+            echo "| macOS (Intel) | \`.dmg\` (x64) |"
+            echo "| Windows | \`.exe\` installer |"
+            echo "| Windows (Portable) | \`.zip\` (no install required) |"
+            echo "| Linux | \`.deb\` package |"
+            echo ""
+            echo "---"
+            echo "*Bundled sidecar: CLIProxyAPIPlus $SIDECAR_VERSION*"
+          } > /tmp/release_body.md
           gh release edit "${{ github.ref_name }}" --notes-file /tmp/release_body.md || true
-          gh release edit "${{ github.ref_name }}" --draft false || true   # ← ĐÃ THÊM: publish release
+          gh release edit "${{ github.ref_name }}" --draft false || true   # ← Quan trọng: publish release
 
   notify:
     name: Discord Notification
@@ -207,4 +274,27 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      # (giữ nguyên toàn bộ phần Discord của bạn)
+      - name: Discord notification (release)
+        if: ${{ needs.release.result == 'success' }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_BODY=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
+            | jq -r '.body // "New version available"')
+          if [ ${#RELEASE_BODY} -gt 3800 ]; then
+            RELEASE_BODY="${RELEASE_BODY:0:3800}...\n\n[See full changelog](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+          fi
+          RELEASE_BODY=$(echo "$RELEASE_BODY" | jq -Rs .)
+          curl -H "Content-Type: application/json" \
+            -d "{\"embeds\": [{\"title\": \"🚀 ProxyPal ${{ github.ref_name }} Released!\", \"description\": $RELEASE_BODY, \"color\": 5793266, \"url\": \"${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}\"}]}" \
+            $DISCORD_WEBHOOK
+      - name: Discord notification (failure)
+        if: ${{ needs.release.result == 'failure' }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d "{\"embeds\": [{\"title\": \"❌ ProxyPal Release Failed\", \"description\": \"**Tag:** \`${{ github.ref_name }}\`\n\n[View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"color\": 15158332}]}" \
+            $DISCORD_WEBHOOK
