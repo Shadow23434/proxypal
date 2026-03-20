@@ -265,34 +265,3 @@ jobs:
           } > /tmp/release_body.md
           gh release edit "${{ github.ref_name }}" --notes-file /tmp/release_body.md || true
           gh release edit "${{ github.ref_name }}" --draft false || true   # ← Quan trọng: publish release
-
-  notify:
-    name: Discord Notification
-    needs: [release, generate-changelog]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Discord notification (release)
-        if: ${{ needs.release.result == 'success' }}
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          RELEASE_BODY=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
-            | jq -r '.body // "New version available"')
-          if [ ${#RELEASE_BODY} -gt 3800 ]; then
-            RELEASE_BODY="${RELEASE_BODY:0:3800}...\n\n[See full changelog](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
-          fi
-          RELEASE_BODY=$(echo "$RELEASE_BODY" | jq -Rs .)
-          curl -H "Content-Type: application/json" \
-            -d "{\"embeds\": [{\"title\": \"🚀 ProxyPal ${{ github.ref_name }} Released!\", \"description\": $RELEASE_BODY, \"color\": 5793266, \"url\": \"${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}\"}]}" \
-            $DISCORD_WEBHOOK
-      - name: Discord notification (failure)
-        if: ${{ needs.release.result == 'failure' }}
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          curl -H "Content-Type: application/json" \
-            -d "{\"embeds\": [{\"title\": \"❌ ProxyPal Release Failed\", \"description\": \"**Tag:** \`${{ github.ref_name }}\`\n\n[View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"color\": 15158332}]}" \
-            $DISCORD_WEBHOOK
