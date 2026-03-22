@@ -430,6 +430,7 @@ pub fn run() {
             // Auth Files Management
             commands::auth_files::get_auth_files,
             commands::auth_files::upload_auth_file,
+            commands::auth_files::create_gemini_web_token,
             commands::auth_files::delete_auth_file,
             commands::auth_files::toggle_auth_file,
             commands::auth_files::download_auth_file,

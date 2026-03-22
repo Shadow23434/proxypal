@@ -13,10 +13,20 @@ const statusConfig = {
     label: "Degraded",
     textColor: "text-amber-600 dark:text-amber-400",
   },
+  expired: {
+    color: "bg-orange-500",
+    label: "Expired",
+    textColor: "text-orange-600 dark:text-orange-400",
+  },
   healthy: {
     color: "bg-green-500",
     label: "Healthy",
     textColor: "text-green-600 dark:text-green-400",
+  },
+  invalid: {
+    color: "bg-rose-500",
+    label: "Invalid auth",
+    textColor: "text-rose-600 dark:text-rose-400",
   },
   offline: {
     color: "bg-red-500",
@@ -27,6 +37,11 @@ const statusConfig = {
     color: "bg-gray-400",
     label: "Not configured",
     textColor: "text-gray-500 dark:text-gray-400",
+  },
+  unsupported: {
+    color: "bg-slate-500",
+    label: "Unsupported",
+    textColor: "text-slate-600 dark:text-slate-400",
   },
 };
 
@@ -78,7 +93,7 @@ export function HealthIndicator(props: HealthIndicatorProps) {
   });
 
   const status = () => health()?.status || "unconfigured";
-  const config = () => statusConfig[status()];
+  const config = () => statusConfig[status() as keyof typeof statusConfig] ?? statusConfig.unconfigured;
 
   return (
     <div
@@ -129,6 +144,11 @@ export function HealthPanel() {
     { connected: authStatus().claude, id: "claude" as const, name: "Claude" },
     { connected: authStatus().openai, id: "openai" as const, name: "ChatGPT" },
     { connected: authStatus().gemini, id: "gemini" as const, name: "Gemini" },
+    {
+      connected: authStatus()["gemini-web"],
+      id: "gemini-web" as const,
+      name: "Gemini Web",
+    },
     { connected: authStatus().qwen, id: "qwen" as const, name: "Qwen" },
     { connected: authStatus().iflow, id: "iflow" as const, name: "iFlow" },
     { connected: authStatus().kiro, id: "kiro" as const, name: "Kiro" },
@@ -173,7 +193,8 @@ export function HealthPanel() {
           {connectedProviders().map((provider) => {
             const providerHealth = () => health()?.[provider.id];
             const status = () => providerHealth()?.status || "unconfigured";
-            const cfg = () => statusConfig[status()];
+            const cfg = () =>
+              statusConfig[status() as keyof typeof statusConfig] ?? statusConfig.unconfigured;
 
             return (
               <div class="flex items-center justify-between py-1">

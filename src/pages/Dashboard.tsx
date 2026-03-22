@@ -13,6 +13,7 @@ import {
   QuotaWidget,
 } from "../components/dashboard/quotas";
 import { DeviceCodeModal } from "../components/DeviceCodeModal";
+import { GeminiWebCookieModal } from "../components/GeminiWebCookieModal";
 import { OAuthModal } from "../components/OAuthModal";
 import { OpenCodeKitBanner } from "../components/OpenCodeKitBanner";
 import { PikaAiBanner } from "../components/PikaAiBanner";
@@ -24,6 +25,7 @@ import {
   type AvailableModel,
   appendToShellProfile,
   type CopilotConfig,
+  createGeminiWebToken,
   type DeviceCodeResponse,
   detectCliAgents,
   disconnectProvider,
@@ -41,6 +43,7 @@ import {
   stopProxy,
   syncUsageFromProxy,
   type UsageStats,
+  verifyProxyAuthStatus,
 } from "../lib/tauri";
 import { appStore } from "../stores/app";
 import { requestStore } from "../stores/requests";
@@ -54,6 +57,11 @@ const providers = [
     provider: "openai" as Provider,
   },
   { logo: "/logos/gemini.svg", name: "Gemini", provider: "gemini" as Provider },
+  {
+    logo: "/logos/gemini.svg",
+    name: "Gemini Web",
+    provider: "gemini-web" as Provider,
+  },
   { logo: "/logos/qwen.png", name: "Qwen", provider: "qwen" as Provider },
   { logo: "/logos/iflow.svg", name: "iFlow", provider: "iflow" as Provider },
   {
@@ -166,6 +174,7 @@ export function DashboardPage() {
   const [oauthModalProvider, setOauthModalProvider] = createSignal<Provider | null>(null);
   const [oauthUrlData, setOauthUrlData] = createSignal<OAuthUrlResponse | null>(null);
   const [oauthLoading, setOauthLoading] = createSignal(false);
+  const [geminiWebCookieModalOpen, setGeminiWebCookieModalOpen] = createSignal(false);
 
   // Device Code Modal state
   const [deviceCodeProvider, setDeviceCodeProvider] = createSignal<Provider | null>(null);
@@ -288,11 +297,91 @@ export function DashboardPage() {
     }
   };
 
+  const markProviderConnected = (provider: Provider, successDescription?: string) => {
+    setRecentlyConnected((prev) => new Set([...prev, provider]));
+    setTimeout(() => {
+      setRecentlyConnected((prev) => {
+        const next = new Set(prev);
+        next.delete(provider);
+        return next;
+      });
+    }, 2000);
+    toastStore.success(
+      t("dashboard.toasts.providerConnected", {
+        provider: getProviderName(provider),
+      }),
+      successDescription ?? t("dashboard.toasts.youCanNowUseThisProvider"),
+    );
+  };
+
+  const handleOAuthAuthStatusRefresh = async (provider: Provider): Promise<boolean> => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const currentCount = authStatus()[provider] || 0;
+    let newAuth = await refreshAuthStatus();
+    let retries = 0;
+
+    while ((newAuth[provider] || 0) <= currentCount && retries < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      newAuth = await refreshAuthStatus();
+      retries++;
+    }
+
+    setAuthStatus(newAuth);
+
+    if ((newAuth[provider] || 0) > currentCount) {
+      setOauthLoading(false);
+      setOauthModalProvider(null);
+      setOauthUrlData(null);
+      markProviderConnected(provider);
+      return true;
+    }
+
+    let proxyProviderError: string | undefined;
+    let proxyProviderAuthenticated = false;
+    try {
+      const proxyStatus = await verifyProxyAuthStatus();
+      proxyProviderError = proxyStatus.providers[provider]?.error;
+      proxyProviderAuthenticated = proxyStatus.providers[provider]?.authenticated === true;
+    } catch {
+      // Ignore unsupported or unavailable status endpoint.
+    }
+
+    if (provider === "gemini-web" && proxyProviderAuthenticated) {
+      setOauthLoading(false);
+      setOauthModalProvider(null);
+      setOauthUrlData(null);
+      markProviderConnected(provider, t("dashboard.toasts.geminiWebSessionDetected"));
+      return true;
+    }
+
+    setOauthLoading(false);
+    toastStore.warning(
+      t("dashboard.toasts.oauthCompletedButCredentialMissing", {
+        provider: getProviderName(provider),
+      }),
+      provider === "gemini-web"
+        ? proxyProviderError || t("dashboard.toasts.geminiWebManualUploadFallback")
+        : t("dashboard.toasts.retryAuthorizationCheck"),
+    );
+    return false;
+  };
+
   const handleConnect = async (provider: Provider) => {
     if (!proxyStatus().running) {
       toastStore.warning(
         t("dashboard.toasts.startProxyFirst"),
         t("dashboard.toasts.proxyMustRunToConnectAccounts"),
+      );
+      return;
+    }
+
+    if (provider === "gemini-web") {
+      setConnecting(null);
+      setGeminiWebCookieModalOpen(true);
+      toastStore.info(
+        t("dashboard.toasts.geminiWebUsesOfficialGeminiLogin"),
+        t("dashboard.toasts.geminiWebCookieMode"),
       );
       return;
     }
@@ -322,18 +411,7 @@ export function DashboardPage() {
         const newAuth = await refreshAuthStatus();
         setAuthStatus(newAuth);
         setConnecting(null);
-        setRecentlyConnected((prev) => new Set([...prev, provider]));
-        setTimeout(() => {
-          setRecentlyConnected((prev) => {
-            const next = new Set(prev);
-            next.delete(provider);
-            return next;
-          });
-        }, 2000);
-        toastStore.success(
-          t("dashboard.toasts.vertexConnected"),
-          t("dashboard.toasts.serviceAccountImportedSuccessfully"),
-        );
+        markProviderConnected(provider, t("dashboard.toasts.serviceAccountImportedSuccessfully"));
       } catch (error) {
         console.error("Vertex import failed:", error);
         setConnecting(null);
@@ -351,8 +429,10 @@ export function DashboardPage() {
       setConnecting(null);
     } catch (error) {
       console.error("Failed to get OAuth URL:", error);
+
+      const errorMessage = String(error);
       setConnecting(null);
-      toastStore.error(t("dashboard.toasts.connectionFailed"), String(error));
+      toastStore.error(t("dashboard.toasts.connectionFailed"), errorMessage);
     }
   };
 
@@ -406,40 +486,7 @@ export function DashboardPage() {
           const completed = await pollOAuthStatus(urlData.state);
           if (completed) {
             clearInterval(pollInterval);
-            // Add delay to ensure file is written before scanning
-            await new Promise((resolve) => setTimeout(resolve, 500));
-
-            // Get current count for this provider to detect new auth
-            const currentAuth = authStatus();
-            const currentCount = currentAuth[provider] || 0;
-
-            // Retry refresh up to 3 times with delay if count doesn't increase
-            let newAuth = await refreshAuthStatus();
-            let retries = 0;
-            while ((newAuth[provider] || 0) <= currentCount && retries < 3) {
-              await new Promise((resolve) => setTimeout(resolve, 500));
-              newAuth = await refreshAuthStatus();
-              retries++;
-            }
-
-            setAuthStatus(newAuth);
-            setOauthLoading(false);
-            setOauthModalProvider(null);
-            setOauthUrlData(null);
-            setRecentlyConnected((prev) => new Set([...prev, provider]));
-            setTimeout(() => {
-              setRecentlyConnected((prev) => {
-                const next = new Set(prev);
-                next.delete(provider);
-                return next;
-              });
-            }, 2000);
-            toastStore.success(
-              t("dashboard.toasts.providerConnected", {
-                provider: getProviderName(provider),
-              }),
-              t("dashboard.toasts.youCanNowUseThisProvider"),
-            );
+            await handleOAuthAuthStatusRefresh(provider);
           } else if (attempts >= maxAttempts) {
             clearInterval(pollInterval);
             setOauthLoading(false);
@@ -473,40 +520,7 @@ export function DashboardPage() {
     try {
       const completed = await pollOAuthStatus(urlData.state);
       if (completed) {
-        // Add delay to ensure file is written before scanning
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Get current count for this provider to detect new auth
-        const currentAuth = authStatus();
-        const currentCount = currentAuth[provider] || 0;
-
-        // Retry refresh up to 3 times with delay if count doesn't increase
-        let newAuth = await refreshAuthStatus();
-        let retries = 0;
-        while ((newAuth[provider] || 0) <= currentCount && retries < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          newAuth = await refreshAuthStatus();
-          retries++;
-        }
-
-        setAuthStatus(newAuth);
-        setOauthLoading(false);
-        setOauthModalProvider(null);
-        setOauthUrlData(null);
-        setRecentlyConnected((prev) => new Set([...prev, provider]));
-        setTimeout(() => {
-          setRecentlyConnected((prev) => {
-            const next = new Set(prev);
-            next.delete(provider);
-            return next;
-          });
-        }, 2000);
-        toastStore.success(
-          t("dashboard.toasts.providerConnected", {
-            provider: getProviderName(provider),
-          }),
-          t("dashboard.toasts.youCanNowUseThisProvider"),
-        );
+        await handleOAuthAuthStatusRefresh(provider);
       } else {
         setOauthLoading(false);
         toastStore.warning(
@@ -525,6 +539,25 @@ export function DashboardPage() {
     setOauthModalProvider(null);
     setOauthUrlData(null);
     setOauthLoading(false);
+  };
+
+  const handleSubmitGeminiWebCookies = async (payload: {
+    label?: string;
+    secure1psid: string;
+    secure1psidts: string;
+  }) => {
+    setOauthLoading(true);
+    try {
+      await createGeminiWebToken(payload.secure1psid, payload.secure1psidts, payload.label);
+      const newAuth = await refreshAuthStatus();
+      setAuthStatus(newAuth);
+      setGeminiWebCookieModalOpen(false);
+      setOauthLoading(false);
+      markProviderConnected("gemini-web", t("dashboard.toasts.geminiWebCookiesSaved"));
+    } catch (error) {
+      setOauthLoading(false);
+      toastStore.error(t("dashboard.toasts.connectionFailed"), String(error));
+    }
   };
 
   const handleDisconnect = async (provider: Provider) => {
@@ -905,6 +938,16 @@ export function DashboardPage() {
         onStartOAuth={handleStartOAuth}
         provider={oauthModalProvider()}
         providerName={oauthModalProvider() ? getProviderName(oauthModalProvider()!) : ""}
+      />
+
+      <GeminiWebCookieModal
+        loading={oauthLoading()}
+        onCancel={() => {
+          setGeminiWebCookieModalOpen(false);
+          setOauthLoading(false);
+        }}
+        onSubmit={handleSubmitGeminiWebCookies}
+        open={geminiWebCookieModalOpen()}
       />
 
       {/* Device Code Modal */}

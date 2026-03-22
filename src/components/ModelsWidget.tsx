@@ -208,7 +208,7 @@ export const ModelsWidget: Component<ModelsWidgetProps> = (props) => {
                 defaultExpanded={
                   selectedProvider() === group.provider || providerGroups().length === 1
                 }
-                maxVisible={3}
+                maxVisible={8}
                 models={group.models}
                 title={group.displayName}
               />

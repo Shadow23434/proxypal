@@ -3,7 +3,58 @@
 use tauri::State;
 
 use crate::state::AppState;
-use crate::types::{ProviderHealth, HealthStatus};
+use crate::types::{ProviderHealth, HealthStatus, ProxyAuthProviderStatus};
+
+fn make_offline_status(now: u64) -> HealthStatus {
+    HealthStatus {
+        status: "offline".to_string(),
+        latency_ms: None,
+        last_checked: now,
+    }
+}
+
+fn make_unconfigured_status(now: u64) -> HealthStatus {
+    HealthStatus {
+        status: "unconfigured".to_string(),
+        latency_ms: None,
+        last_checked: now,
+    }
+}
+
+fn map_proxy_provider_status(
+    provider: &ProxyAuthProviderStatus,
+    proxy_healthy: bool,
+    latency: Option<u64>,
+    now: u64,
+) -> HealthStatus {
+    let normalized_error = provider.error.as_deref().unwrap_or("").to_ascii_lowercase();
+
+    let status = if normalized_error.contains("unsupported") {
+        "unsupported"
+    } else if normalized_error.contains("expired") {
+        "expired"
+    } else if normalized_error.contains("invalid") {
+        "invalid"
+    } else if provider.authenticated {
+        if !proxy_healthy {
+            "offline"
+        } else if latency.map(|l| l > 2000).unwrap_or(false) {
+            "degraded"
+        } else {
+            "healthy"
+        }
+    } else if !normalized_error.is_empty() {
+        "invalid"
+    } else {
+        "unconfigured"
+    };
+
+    HealthStatus {
+        status: status.to_string(),
+        latency_ms: latency,
+        last_checked: now,
+    }
+}
 
 #[tauri::command]
 pub async fn check_provider_health(state: State<'_, AppState>) -> Result<ProviderHealth, String> {
@@ -21,15 +72,12 @@ pub async fn check_provider_health(state: State<'_, AppState>) -> Result<Provide
     
     // If proxy is not running, all providers are offline
     if !proxy_running {
-        let offline_status = HealthStatus {
-            status: "offline".to_string(),
-            latency_ms: None,
-            last_checked: now,
-        };
+        let offline_status = make_offline_status(now);
         return Ok(ProviderHealth {
             claude: offline_status.clone(),
             openai: offline_status.clone(),
             gemini: offline_status.clone(),
+            gemini_web: offline_status.clone(),
             qwen: offline_status.clone(),
             iflow: offline_status.clone(),
             vertex: offline_status.clone(),
@@ -62,14 +110,19 @@ pub async fn check_provider_health(state: State<'_, AppState>) -> Result<Provide
         Err(_) => (false, None),
     };
     
+    let proxy_auth_status = crate::commands::auth_files::verify_proxy_auth_status(state.clone())
+        .await
+        .ok()
+        .filter(|status| status.status != "unsupported");
+
     // Build health status for each provider
-    let make_status = |is_configured: bool| -> HealthStatus {
+    let make_status = |provider_status: Option<&ProxyAuthProviderStatus>, is_configured: bool| -> HealthStatus {
+        if let Some(provider_status) = provider_status {
+            return map_proxy_provider_status(provider_status, proxy_healthy, latency, now);
+        }
+
         if !is_configured {
-            HealthStatus {
-                status: "unconfigured".to_string(),
-                latency_ms: None,
-                last_checked: now,
-            }
+            make_unconfigured_status(now)
         } else if !proxy_healthy {
             HealthStatus {
                 status: "offline".to_string(),
@@ -85,15 +138,24 @@ pub async fn check_provider_health(state: State<'_, AppState>) -> Result<Provide
             }
         }
     };
-    
+
+    let providers = proxy_auth_status.as_ref().map(|status| &status.providers);
+
     Ok(ProviderHealth {
-        claude: make_status(auth_status.claude > 0),
-        openai: make_status(auth_status.openai > 0),
-        gemini: make_status(auth_status.gemini > 0),
-        qwen: make_status(auth_status.qwen > 0),
-        iflow: make_status(auth_status.iflow > 0),
-        vertex: make_status(auth_status.vertex > 0),
-        kiro: make_status(auth_status.kiro > 0),
-        antigravity: make_status(auth_status.antigravity > 0),
+        claude: make_status(providers.and_then(|p| p.claude.as_ref()), auth_status.claude > 0),
+        openai: make_status(providers.and_then(|p| p.openai.as_ref()), auth_status.openai > 0),
+        gemini: make_status(providers.and_then(|p| p.gemini.as_ref()), auth_status.gemini > 0),
+        gemini_web: make_status(
+            providers.and_then(|p| p.gemini_web.as_ref()),
+            auth_status.gemini_web > 0,
+        ),
+        qwen: make_status(providers.and_then(|p| p.qwen.as_ref()), auth_status.qwen > 0),
+        iflow: make_status(providers.and_then(|p| p.iflow.as_ref()), auth_status.iflow > 0),
+        vertex: make_status(providers.and_then(|p| p.vertex.as_ref()), auth_status.vertex > 0),
+        kiro: make_status(providers.and_then(|p| p.kiro.as_ref()), auth_status.kiro > 0),
+        antigravity: make_status(
+            providers.and_then(|p| p.antigravity.as_ref()),
+            auth_status.antigravity > 0,
+        ),
     })
 }

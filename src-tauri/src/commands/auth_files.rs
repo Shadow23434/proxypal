@@ -127,31 +127,31 @@ pub async fn get_auth_files(state: State<'_, AppState>) -> Result<Vec<AuthFile>,
 pub async fn upload_auth_file(state: State<'_, AppState>, file_path: String, provider: String) -> Result<(), String> {
     let port = state.config.lock().unwrap().port;
     let url = get_management_url(port, "auth-files");
-    
+
     // Read file content
     let content = std::fs::read(&file_path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
-    
+
     // Get filename from path
     let filename = std::path::Path::new(&file_path)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("auth.json")
         .to_string();
-    
+
     let client = build_management_client();
-    
+
     // Create multipart form
     let part = reqwest::multipart::Part::bytes(content)
         .file_name(filename.clone())
         .mime_str("application/json")
         .map_err(|e| e.to_string())?;
-    
+
     let form = reqwest::multipart::Form::new()
         .text("provider", provider)
         .text("filename", filename)
         .part("file", part);
-    
+
     let response = client
         .post(&url)
         .header("X-Management-Key", &get_management_key())
@@ -159,13 +159,47 @@ pub async fn upload_auth_file(state: State<'_, AppState>, file_path: String, pro
         .send()
         .await
         .map_err(|e| format!("Failed to upload auth file: {}", e))?;
-    
+
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         return Err(format!("Failed to upload auth file: {} - {}", status, text));
     }
-    
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_gemini_web_token(
+    state: State<'_, AppState>,
+    secure_1psid: String,
+    secure_1psidts: String,
+    label: Option<String>,
+) -> Result<(), String> {
+    let port = state.config.lock().unwrap().port;
+    let url = get_management_url(port, "gemini-web-token");
+
+    let body = serde_json::json!({
+        "secure_1psid": secure_1psid,
+        "secure_1psidts": secure_1psidts,
+        "label": label.unwrap_or_default(),
+    });
+
+    let client = build_management_client();
+    let response = client
+        .post(&url)
+        .header("X-Management-Key", &get_management_key())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to create Gemini Web token: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to create Gemini Web token: {} - {}", status, text));
+    }
+
     Ok(())
 }
 

@@ -6,6 +6,7 @@ export type Provider =
   | "claude"
   | "openai"
   | "gemini"
+  | "gemini-web"
   | "qwen"
   | "iflow"
   | "vertex"
@@ -58,6 +59,7 @@ export interface AuthStatus {
   antigravity: number;
   claude: number;
   gemini: number;
+  "gemini-web": number;
   iflow: number;
   kimi: number;
   kiro: number;
@@ -113,7 +115,10 @@ export interface ProxyAuthProviders {
   claude?: ProxyAuthProviderStatus;
   copilot?: ProxyAuthProviderStatus;
   gemini?: ProxyAuthProviderStatus;
+  "gemini-web"?: ProxyAuthProviderStatus;
   iflow?: ProxyAuthProviderStatus;
+  kimi?: ProxyAuthProviderStatus;
+  kiro?: ProxyAuthProviderStatus;
   openai?: ProxyAuthProviderStatus;
   qwen?: ProxyAuthProviderStatus;
   vertex?: ProxyAuthProviderStatus;

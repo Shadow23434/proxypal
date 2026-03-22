@@ -34,6 +34,7 @@ pub async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<Avai
     let auth_status = state.auth_status.lock().unwrap().clone();
     let has_vertex = auth_status.vertex > 0;
     let has_gemini_api = !config.gemini_api_keys.is_empty();
+    let has_gemini_web = auth_status.gemini_web > 0;
     let has_copilot = config.copilot.enabled;
     
     let client = reqwest::Client::builder()
@@ -76,13 +77,21 @@ pub async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<Avai
             // Determine source based on owned_by and auth status
             let source = match m.owned_by.as_str() {
                 "google" => {
-                    // Google models can come from Vertex AI or Gemini API
-                    if has_vertex && !has_gemini_api {
-                        "vertex".to_string()
-                    } else if has_gemini_api && !has_vertex {
-                        "gemini-api".to_string()
+                    // Google models can come from Vertex AI, Gemini API, or Gemini Web
+                    if has_vertex && has_gemini_api && has_gemini_web {
+                        "vertex+gemini-api+gemini-web".to_string()
                     } else if has_vertex && has_gemini_api {
-                        "vertex+gemini-api".to_string() // Both sources available
+                        "vertex+gemini-api".to_string()
+                    } else if has_vertex && has_gemini_web {
+                        "vertex+gemini-web".to_string()
+                    } else if has_gemini_api && has_gemini_web {
+                        "gemini-api+gemini-web".to_string()
+                    } else if has_vertex {
+                        "vertex".to_string()
+                    } else if has_gemini_api {
+                        "gemini-api".to_string()
+                    } else if has_gemini_web {
+                        "gemini-web".to_string()
                     } else {
                         "google".to_string() // Fallback
                     }

@@ -24,6 +24,34 @@ export const ProviderBadge: Component<ProviderBadgeProps> = (props) => {
           label: "Vertex+API",
           textColor: "text-purple-700 dark:text-purple-300",
         };
+      case "vertex+gemini-web":
+        return {
+          bgColor: "bg-indigo-100 dark:bg-indigo-900/30",
+          dotColor: "bg-indigo-500",
+          label: "Vertex+Web",
+          textColor: "text-indigo-700 dark:text-indigo-300",
+        };
+      case "gemini-api+gemini-web":
+        return {
+          bgColor: "bg-teal-100 dark:bg-teal-900/30",
+          dotColor: "bg-teal-500",
+          label: "API+Web",
+          textColor: "text-teal-700 dark:text-teal-300",
+        };
+      case "vertex+gemini-api+gemini-web":
+        return {
+          bgColor: "bg-violet-100 dark:bg-violet-900/30",
+          dotColor: "bg-violet-500",
+          label: "Vertex+API+Web",
+          textColor: "text-violet-700 dark:text-violet-300",
+        };
+      case "gemini-web":
+        return {
+          bgColor: "bg-sky-100 dark:bg-sky-900/30",
+          dotColor: "bg-sky-500",
+          label: "Web",
+          textColor: "text-sky-700 dark:text-sky-300",
+        };
       case "gemini-api":
         return {
           bgColor: "bg-green-100 dark:bg-green-900/30",

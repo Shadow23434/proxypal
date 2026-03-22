@@ -22,6 +22,7 @@ const providerColors: Record<string, string> = {
   claude: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   codex: "bg-green-500/20 text-green-400 border-green-500/30",
   gemini: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  "gemini-web": "bg-sky-500/20 text-sky-400 border-sky-500/30",
   iflow: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   kiro: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   qwen: "bg-purple-500/20 text-purple-400 border-purple-500/30",
@@ -34,6 +35,7 @@ const providerIcons: Record<string, string> = {
   claude: "/logos/claude.svg",
   codex: "/logos/openai.svg",
   gemini: "/logos/gemini.svg",
+  "gemini-web": "/logos/gemini.svg",
   "gemini-cli": "/logos/gemini.svg",
   iflow: "/logos/iflow.svg",
   kiro: "/logos/kiro.svg",
@@ -84,7 +86,9 @@ export function AuthFilesPage() {
         const filename = selected.split("/").pop() || "";
         let provider = "claude"; // default
 
-        if (filename.includes("gemini")) {
+        if (filename.includes("gemini-web")) {
+          provider = "gemini-web";
+        } else if (filename.includes("gemini")) {
           provider = "gemini";
         } else if (filename.includes("codex")) {
           provider = "codex";
@@ -144,6 +148,8 @@ export function AuthFilesPage() {
     let modelId: string | null = null;
     if (p.includes("claude")) {
       modelId = "claude-sonnet-4-5";
+    } else if (p.includes("gemini-web")) {
+      modelId = "gemini-2.5-flash-web";
     } else if (p.includes("gemini") || p.includes("vertex")) {
       modelId = "gemini-2.5-flash";
     } else if (p.includes("codex")) {

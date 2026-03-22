@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm check:ts)",
+      "Bash(cargo check:*)",
+      "Bash(pnpm check:*)",
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/state.go)",
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/models.go)",
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/prompt.go)",
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/media.go)",
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" cat-file -p HEAD^{tree})"
+    ]
+  }
+}

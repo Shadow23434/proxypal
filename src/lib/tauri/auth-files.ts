@@ -33,6 +33,18 @@ export async function uploadAuthFile(filePath: string, provider: string): Promis
   return invoke("upload_auth_file", { filePath, provider });
 }
 
+export async function createGeminiWebToken(
+  secure1psid: string,
+  secure1psidts: string,
+  label?: string,
+): Promise<void> {
+  return invoke("create_gemini_web_token", {
+    label,
+    secure1psid,
+    secure1psidts,
+  });
+}
+
 export async function deleteAuthFile(fileId: string): Promise<void> {
   return invoke("delete_auth_file", { fileId });
 }

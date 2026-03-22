@@ -42,6 +42,7 @@ function createAppStore() {
     antigravity: 0,
     claude: 0,
     gemini: 0,
+    "gemini-web": 0,
     iflow: 0,
     kimi: 0,
     kiro: 0,

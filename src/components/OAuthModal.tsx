@@ -10,6 +10,7 @@ const providerLogos: Record<Provider, string> = {
   antigravity: "/logos/antigravity.webp",
   claude: "/logos/claude.svg",
   gemini: "/logos/gemini.svg",
+  "gemini-web": "/logos/gemini.svg",
   iflow: "/logos/iflow.svg",
   kimi: "/logos/kimi.png",
   kiro: "/logos/kiro.svg",
@@ -31,6 +32,14 @@ interface OAuthModalProps {
 export function OAuthModal(props: OAuthModalProps) {
   const [copied, setCopied] = createSignal(false);
   const { t } = useI18n();
+
+  const isGeminiWeb = () => props.provider === "gemini-web";
+  const subtitle = () =>
+    isGeminiWeb() ? t("oauth.geminiWebAuthenticateAccount") : t("oauth.authenticateAccount");
+  const startLabel = () =>
+    isGeminiWeb() ? t("oauth.geminiWebStartOAuth") : t("oauth.startOAuth");
+  const alreadyAuthorizedLabel = () =>
+    isGeminiWeb() ? t("oauth.geminiWebAlreadyAuthorized") : t("oauth.alreadyAuthorized");
 
   const handleCopy = async () => {
     try {
@@ -71,9 +80,7 @@ export function OAuthModal(props: OAuthModalProps) {
                 <h3 class="font-semibold text-gray-900 dark:text-gray-100">
                   {t("oauth.connect", { provider: props.providerName })}
                 </h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {t("oauth.authenticateAccount")}
-                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{subtitle()}</p>
               </div>
             </div>
           </div>
@@ -96,8 +103,19 @@ export function OAuthModal(props: OAuthModalProps) {
                   stroke-width="2"
                 />
               </svg>
-              {t("oauth.startOAuth")}
+              {startLabel()}
             </Button>
+
+            <Show when={isGeminiWeb()}>
+              <div class="space-y-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 dark:border-sky-800 dark:bg-sky-900/20">
+                <p class="text-xs text-sky-700 dark:text-sky-300">
+                  {t("oauth.geminiWebBrowserFlowHint")}
+                </p>
+                <p class="text-xs text-sky-600 dark:text-sky-400">
+                  {t("oauth.geminiWebAuthFilesHint")}
+                </p>
+              </div>
+            </Show>
 
             {/* Authorization URL Section */}
             <div class="space-y-1.5">
@@ -165,7 +183,7 @@ export function OAuthModal(props: OAuthModalProps) {
                   stroke-width="2"
                 />
               </svg>
-              {t("oauth.alreadyAuthorized")}
+              {alreadyAuthorizedLabel()}
             </button>
 
             {/* Cancel Button - Dark background */}

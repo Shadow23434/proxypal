@@ -5,6 +5,13 @@ pub struct AuthStatus {
     pub claude: u32,
     pub openai: u32,
     pub gemini: u32,
+    #[serde(
+        default,
+        rename = "gemini-web",
+        alias = "gemini_web",
+        alias = "geminiWeb"
+    )]
+    pub gemini_web: u32,
     pub qwen: u32,
     pub iflow: u32,
     pub vertex: u32,
@@ -19,6 +26,7 @@ impl Default for AuthStatus {
             claude: 0,
             openai: 0,
             gemini: 0,
+            gemini_web: 0,
             qwen: 0,
             iflow: 0,
             vertex: 0,
@@ -48,6 +56,13 @@ pub struct ProxyAuthStatus {
 pub struct ProxyAuthProviders {
     #[serde(default)]
     pub gemini: Option<ProxyAuthProviderStatus>,
+    #[serde(
+        default,
+        rename = "gemini-web",
+        alias = "gemini_web",
+        alias = "geminiWeb"
+    )]
+    pub gemini_web: Option<ProxyAuthProviderStatus>,
     #[serde(default)]
     pub claude: Option<ProxyAuthProviderStatus>,
     #[serde(default)]
@@ -84,6 +99,7 @@ impl Default for ProxyAuthProviders {
     fn default() -> Self {
         Self {
             gemini: None,
+            gemini_web: None,
             claude: None,
             openai: None,
             qwen: None,

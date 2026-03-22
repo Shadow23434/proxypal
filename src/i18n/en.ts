@@ -458,6 +458,10 @@ export const en = {
     toasts: {
       chooseServiceAccountJson: "Choose a service account JSON",
       completeAuthenticationInBrowser: "Complete authentication in your browser",
+      geminiWebUsesOfficialGeminiLogin:
+        "Gemini Web now uses real cookie-based login instead of Gemini CLI OAuth",
+      geminiWebCapabilityAwareFlow:
+        "ProxyPal will save Gemini Web cookies directly into CLIProxyAPI so requests use the real Gemini Web provider",
       completeAuthorizationInBrowserFirst: "Please complete authorization in your browser first",
       connectingToProvider: "Connecting to {{provider}}...",
       connectionFailed: "Connection failed",
@@ -469,8 +473,19 @@ export const en = {
       listeningOnPort: "Listening on port {{port}}",
       noFileSelected: "No file selected",
       notAuthorizedYet: "Not authorized yet",
+      oauthCompletedButCredentialMissing:
+        "{{provider}} finished authentication, but no local credential file was found yet",
       pleaseTryAgain: "Please try again",
       providerConnected: "{{provider}} connected!",
+      geminiWebManualUploadFallback:
+        "Retry the authorization check, or upload your Gemini Web auth JSON from Auth Files if CLIProxyAPI did not save it automatically",
+      geminiWebSessionDetected:
+        "Gemini Web is already authenticated through the sidecar browser or cookie session",
+      geminiWebCookieMode:
+        "Paste your Gemini Web cookies to create a real Gemini Web session instead of using Gemini CLI OAuth",
+      geminiWebCookiesSaved: "Gemini Web cookies saved successfully",
+      retryAuthorizationCheck:
+        "Retry the authorization check in a moment if the credential file has not been written yet",
       providerDisconnected: "{{provider}} disconnected",
       proxyMustRunToConnectAccounts: "The proxy must be running to connect accounts",
       proxyStarted: "Proxy started",
@@ -535,6 +550,19 @@ export const en = {
     authorizationUrl: "Authorization URL",
     connect: "Connect {{provider}}",
     copyUrl: "Copy URL",
+    geminiWebAlreadyAuthorized: "I already finished browser login",
+    geminiWebAuthenticateAccount: "Authenticate using your Gemini browser session",
+    geminiWebAuthFilesHint:
+      "If the account still does not appear afterward, you can upload a Gemini Web auth JSON from Auth Files.",
+    geminiWebBrowserFlowHint:
+      "CLIProxyAPI may complete Gemini Web auth by reusing your browser session or imported cookies, depending on sidecar support.",
+    geminiWebCookieHint:
+      "Open gemini.google.com in your browser, export __Secure-1PSID and __Secure-1PSIDTS, then paste them here.",
+    geminiWebCookieLabelPlaceholder: "Optional label for this Gemini Web account",
+    geminiWebCookieRequired: "Both __Secure-1PSID and __Secure-1PSIDTS are required",
+    geminiWebCookieSubtitle: "Connect Gemini Web using real browser cookies",
+    geminiWebSaveCookies: "Save Gemini Web cookies",
+    geminiWebStartOAuth: "Open Gemini Web login",
     startOAuth: "Start OAuth",
   },
   requestMonitor: {

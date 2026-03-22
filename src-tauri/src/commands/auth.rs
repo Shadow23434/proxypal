@@ -4,7 +4,7 @@
 //! provider connection/disconnection, and credential management.
 
 use crate::state::AppState;
-use crate::types::{AuthStatus, OAuthState};
+use crate::types::{AuthStatus, OAuthState, ProxyAuthProviderStatus};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 use tauri_plugin_opener::OpenerExt;
@@ -29,6 +29,49 @@ pub struct DeviceCodeResponse {
 #[tauri::command]
 pub fn get_auth_status(state: State<AppState>) -> AuthStatus {
     state.auth_status.lock().unwrap().clone()
+}
+
+fn provider_count_from_proxy(status: Option<&ProxyAuthProviderStatus>) -> Option<u32> {
+    status.map(|provider| match provider.accounts {
+        Some(accounts) if accounts > 0 => accounts,
+        _ if provider.authenticated => 1,
+        _ => 0,
+    })
+}
+
+fn overlay_proxy_auth_counts(auth: &mut AuthStatus, proxy_status: &crate::types::ProxyAuthStatus) {
+    let providers = &proxy_status.providers;
+
+    if let Some(count) = provider_count_from_proxy(providers.claude.as_ref()) {
+        auth.claude = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.openai.as_ref()) {
+        auth.openai = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.gemini.as_ref()) {
+        auth.gemini = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.gemini_web.as_ref()) {
+        auth.gemini_web = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.qwen.as_ref()) {
+        auth.qwen = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.iflow.as_ref()) {
+        auth.iflow = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.vertex.as_ref()) {
+        auth.vertex = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.kiro.as_ref()) {
+        auth.kiro = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.antigravity.as_ref()) {
+        auth.antigravity = count;
+    }
+    if let Some(count) = provider_count_from_proxy(providers.kimi.as_ref()) {
+        auth.kimi = count;
+    }
 }
 
 /// Get OAuth URL without opening browser (for modal flow)
@@ -69,6 +112,12 @@ pub async fn get_oauth_url(
             "http://127.0.0.1:{}/v0/management/gemini-cli-auth-url?is_webui=true",
             port
         ),
+        "gemini-web" => {
+            return Err(
+                "Gemini Web now uses cookie-based login. Use create_gemini_web_token instead."
+                    .to_string(),
+            )
+        }
         "qwen" => format!(
             "http://127.0.0.1:{}/v0/management/qwen-auth-url?is_webui=true",
             port
@@ -266,6 +315,12 @@ pub async fn open_oauth(
             "http://127.0.0.1:{}/v0/management/gemini-cli-auth-url?is_webui=true",
             port
         ),
+        "gemini-web" => {
+            return Err(
+                "Gemini Web now uses cookie-based login. Use create_gemini_web_token instead."
+                    .to_string(),
+            )
+        }
         "qwen" => format!(
             "http://127.0.0.1:{}/v0/management/qwen-auth-url?is_webui=true",
             port
@@ -397,6 +452,7 @@ pub async fn refresh_auth_status(
             // - claude-{email}.json or anthropic-*.json
             // - codex-{email}.json
             // - gemini-{email}-{project}.json
+            // - gemini-web-{email}-{project}.json
             // - qwen-{email}.json
             // - iflow-{email}.json
             // - vertex-{project_id}.json
@@ -407,6 +463,8 @@ pub async fn refresh_auth_status(
                     new_auth.claude += 1;
                 } else if filename.starts_with("codex-") {
                     new_auth.openai += 1;
+                } else if filename.starts_with("gemini-web-") {
+                    new_auth.gemini_web += 1;
                 } else if filename.starts_with("gemini-") {
                     new_auth.gemini += 1;
                 } else if filename.starts_with("qwen-") {
@@ -423,6 +481,12 @@ pub async fn refresh_auth_status(
                     new_auth.kimi += 1;
                 }
             }
+        }
+    }
+
+    if let Ok(proxy_status) = crate::commands::auth_files::verify_proxy_auth_status(state.clone()).await {
+        if proxy_status.status != "unsupported" {
+            overlay_proxy_auth_counts(&mut new_auth, &proxy_status);
         }
     }
 
@@ -448,40 +512,20 @@ pub async fn complete_oauth(
     provider: String,
     code: String,
 ) -> Result<AuthStatus, String> {
-    // In a real implementation, we would:
-    // 1. Exchange the code for tokens
-    // 2. Store the tokens securely (keychain/credential manager)
-    // 3. Update the auth status
-    let _ = code; // Mark as used
+    let _ = code;
 
-    // For now, just increment the account count
+    match provider.as_str() {
+        "claude" | "openai" | "gemini" | "gemini-web" | "qwen" | "iflow" | "vertex"
+        | "kiro" | "antigravity" | "kimi" => {}
+        _ => return Err(format!("Unknown provider: {}", provider)),
+    }
+
     {
-        let mut auth = state.auth_status.lock().unwrap();
-        match provider.as_str() {
-            "claude" => auth.claude += 1,
-            "openai" => auth.openai += 1,
-            "gemini" => auth.gemini += 1,
-            "qwen" => auth.qwen += 1,
-            "iflow" => auth.iflow += 1,
-            "vertex" => auth.vertex += 1,
-            "kiro" => auth.kiro += 1,
-            "antigravity" => auth.antigravity += 1,
-            "kimi" => auth.kimi += 1,
-            _ => return Err(format!("Unknown provider: {}", provider)),
-        }
-
-        // Save to file
-        crate::save_auth_to_file(&auth)?;
-
-        // Clear pending OAuth
         let mut pending = state.pending_oauth.lock().unwrap();
         *pending = None;
-
-        // Emit auth status update
-        let _ = app.emit("auth-status-changed", auth.clone());
-
-        Ok(auth.clone())
     }
+
+    refresh_auth_status(app, state).await
 }
 
 #[tauri::command]
@@ -506,7 +550,10 @@ pub async fn disconnect_provider(
                         filename.starts_with("claude-") || filename.starts_with("anthropic-")
                     }
                     "openai" => filename.starts_with("codex-"),
-                    "gemini" => filename.starts_with("gemini-"),
+                    "gemini" => {
+                        filename.starts_with("gemini-") && !filename.starts_with("gemini-web-")
+                    }
+                    "gemini-web" => filename.starts_with("gemini-web-"),
                     "qwen" => filename.starts_with("qwen-"),
                     "iflow" => filename.starts_with("iflow-"),
                     "vertex" => filename.starts_with("vertex-"),
@@ -531,6 +578,7 @@ pub async fn disconnect_provider(
         "claude" => auth.claude = 0,
         "openai" => auth.openai = 0,
         "gemini" => auth.gemini = 0,
+        "gemini-web" => auth.gemini_web = 0,
         "qwen" => auth.qwen = 0,
         "iflow" => auth.iflow = 0,
         "vertex" => auth.vertex = 0,

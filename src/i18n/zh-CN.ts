@@ -450,6 +450,9 @@ export const zhCN = {
     toasts: {
       chooseServiceAccountJson: "请选择服务账号 JSON",
       completeAuthenticationInBrowser: "请在浏览器中完成认证",
+      geminiWebUsesOfficialGeminiLogin: "Gemini Web 现在改为使用真实的 Cookie 登录，而不是 Gemini CLI OAuth",
+      geminiWebCapabilityAwareFlow:
+        "ProxyPal 会直接把 Gemini Web Cookies 保存到 CLIProxyAPI，让请求真正走 Gemini Web provider",
       completeAuthorizationInBrowserFirst: "请先在浏览器完成授权",
       connectingToProvider: "正在连接 {{provider}}...",
       connectionFailed: "连接失败",
@@ -461,8 +464,15 @@ export const zhCN = {
       listeningOnPort: "监听端口 {{port}}",
       noFileSelected: "未选择文件",
       notAuthorizedYet: "尚未授权",
+      oauthCompletedButCredentialMissing: "{{provider}} 已完成认证，但尚未发现本地凭证文件",
       pleaseTryAgain: "请重试",
       providerConnected: "{{provider}} 已连接！",
+      geminiWebManualUploadFallback:
+        "请稍后重试授权检查；如果 CLIProxyAPI 没有自动保存，也可以在 Auth Files 中手动上传 Gemini Web 的认证 JSON",
+      geminiWebSessionDetected: "Gemini Web 已通过 sidecar 的浏览器或 Cookie 会话完成认证",
+      geminiWebCookieMode: "请粘贴 Gemini Web Cookies 来创建真正的 Gemini Web 会话，而不是继续使用 Gemini CLI OAuth",
+      geminiWebCookiesSaved: "Gemini Web Cookies 保存成功",
+      retryAuthorizationCheck: "如果凭证文件尚未写入，请稍后再次检查授权状态",
       providerDisconnected: "{{provider}} 已断开",
       proxyMustRunToConnectAccounts: "代理必须运行后才能连接账号",
       proxyStarted: "代理已启动",
@@ -526,6 +536,19 @@ export const zhCN = {
     authorizationUrl: "授权链接",
     connect: "连接 {{provider}}",
     copyUrl: "复制链接",
+    geminiWebAlreadyAuthorized: "我已完成浏览器登录",
+    geminiWebAuthenticateAccount: "使用你的 Gemini 浏览器会话进行认证",
+    geminiWebAuthFilesHint:
+      "如果之后账号仍未显示，也可以在 Auth Files 中手动上传 Gemini Web 的认证 JSON。",
+    geminiWebBrowserFlowHint:
+      "根据 sidecar 能力，CLIProxyAPI 可能会复用你的浏览器会话或导入的 Cookies 来完成 Gemini Web 认证。",
+    geminiWebCookieHint:
+      "在浏览器打开 gemini.google.com，导出 __Secure-1PSID 和 __Secure-1PSIDTS，然后粘贴到这里。",
+    geminiWebCookieLabelPlaceholder: "可选：给这个 Gemini Web 账号起个标签",
+    geminiWebCookieRequired: "必须同时提供 __Secure-1PSID 和 __Secure-1PSIDTS",
+    geminiWebCookieSubtitle: "使用真实浏览器 Cookies 连接 Gemini Web",
+    geminiWebSaveCookies: "保存 Gemini Web Cookies",
+    geminiWebStartOAuth: "打开 Gemini Web 登录",
     startOAuth: "开始 OAuth",
   },
   requestMonitor: {

@@ -6,6 +6,8 @@ pub struct ProviderHealth {
     pub claude: HealthStatus,
     pub openai: HealthStatus,
     pub gemini: HealthStatus,
+    #[serde(rename = "gemini-web")]
+    pub gemini_web: HealthStatus,
     pub qwen: HealthStatus,
     pub iflow: HealthStatus,
     pub vertex: HealthStatus,

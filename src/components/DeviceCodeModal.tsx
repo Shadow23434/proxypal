@@ -8,6 +8,7 @@ import type { DeviceCodeResponse, Provider } from "../lib/tauri/auth";
 const providerLogos: Record<string, string> = {
   openai: "/logos/codex.svg",
   qwen: "/logos/qwen.webp",
+  "gemini-web": "/logos/gemini.svg",
 };
 
 interface DeviceCodeModalProps {

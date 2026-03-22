@@ -4,13 +4,21 @@ import { invoke } from "@tauri-apps/api/core";
 export interface HealthStatus {
   lastChecked: number;
   latencyMs?: number;
-  status: "healthy" | "degraded" | "offline" | "unconfigured";
+  status:
+    | "healthy"
+    | "degraded"
+    | "offline"
+    | "unconfigured"
+    | "expired"
+    | "invalid"
+    | "unsupported";
 }
 
 export interface ProviderHealth {
   antigravity: HealthStatus;
   claude: HealthStatus;
   gemini: HealthStatus;
+  "gemini-web": HealthStatus;
   iflow: HealthStatus;
   kimi: HealthStatus;
   kiro: HealthStatus;
