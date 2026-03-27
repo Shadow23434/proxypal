@@ -1,11 +1,15 @@
-import { type Component, createSignal, For, Show } from "solid-js";
+import { type Component, createEffect, createSignal, For, Show } from "solid-js";
 import { ModelCard, type ModelInfo } from "./ModelCard";
+
+import type { ModelStatusInfo } from "./settings/ModelsSettings";
 
 interface ModelsListProps {
   compact?: boolean;
   defaultExpanded?: boolean;
   maxVisible?: number;
+  modelStatuses: Record<string, ModelStatusInfo>;
   models: ModelInfo[];
+  onTestModel: (modelId: string) => void | Promise<void>;
   title?: string;
 }
 
@@ -26,6 +30,19 @@ export const ModelsList: Component<ModelsListProps> = (props) => {
 
   const hasMore = () => props.models.length > maxVisible();
   const remainingCount = () => props.models.length - maxVisible();
+
+  createEffect(() => {
+    if (!expanded()) {
+      return;
+    }
+
+    for (const model of visibleModels()) {
+      const status = props.modelStatuses[model.id]?.status ?? "untested";
+      if (status === "untested") {
+        void props.onTestModel(model.id);
+      }
+    }
+  });
 
   return (
     <div class="w-full">
@@ -60,7 +77,13 @@ export const ModelsList: Component<ModelsListProps> = (props) => {
       <Show when={expanded()}>
         <div class="mt-2 space-y-2 pl-6">
           <For each={visibleModels()}>
-            {(model) => <ModelCard compact={compact()} model={model} />}
+            {(model) => (
+              <ModelCard
+                compact={compact()}
+                model={model}
+                testStatus={props.modelStatuses[model.id]}
+              />
+            )}
           </For>
 
           {/* Show More Button */}

@@ -102,9 +102,34 @@ fn update_proxy_config_yaml_at_path(
     };
 
     existing_yaml = set_routing_strategy(&existing_yaml, &app_config.routing_strategy);
+    existing_yaml = set_active_copilot_auth_index(&existing_yaml, &app_config.copilot.active_auth_index);
 
     std::fs::write(proxy_config_path, existing_yaml)
         .map_err(|e| format!("Failed to write proxy config: {}", e))
+}
+
+fn set_active_copilot_auth_index(existing_yaml: &str, auth_index: &str) -> String {
+    let mut lines: Vec<String> = existing_yaml.lines().map(|line| line.to_string()).collect();
+    let key = "active-copilot-auth-index:";
+
+    if let Some(idx) = lines.iter().position(|line| line.trim_start().starts_with(key)) {
+        if auth_index.trim().is_empty() {
+            lines.remove(idx);
+        } else {
+            lines[idx] = format!("active-copilot-auth-index: \"{}\"", auth_index.trim());
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    if auth_index.trim().is_empty() {
+        return existing_yaml.to_string();
+    }
+
+    if !lines.is_empty() && !lines.last().is_some_and(|line| line.is_empty()) {
+        lines.push(String::new());
+    }
+    lines.push(format!("active-copilot-auth-index: \"{}\"", auth_index.trim()));
+    lines.join("\n") + "\n"
 }
 
 fn set_routing_strategy(existing_yaml: &str, strategy: &str) -> String {

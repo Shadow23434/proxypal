@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface AuthFile {
   account?: string;
   accountType?: string;
+  authIndex?: string;
   createdAt?: string;
   disabled: boolean;
   email?: string;

@@ -12,6 +12,8 @@ pub struct CopilotConfig {
     #[serde(default)]
     pub github_token: String,
     #[serde(default)]
+    pub active_auth_index: String,
+    #[serde(default)]
     pub rate_limit: Option<u16>,
     #[serde(default)]
     pub rate_limit_wait: bool,
@@ -28,6 +30,7 @@ impl Default for CopilotConfig {
             port: 4141,
             account_type: "individual".to_string(),
             github_token: String::new(),
+            active_auth_index: String::new(),
             rate_limit: None,
             rate_limit_wait: false,
         }

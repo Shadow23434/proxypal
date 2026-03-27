@@ -13,6 +13,7 @@ import {
   toggleAuthFile,
   uploadAuthFile,
 } from "../lib/tauri";
+import { isModelForProvider, normalizeProvider } from "../lib/model-provider";
 import { appStore } from "../stores/app";
 import { toastStore } from "../stores/toast";
 
@@ -21,6 +22,8 @@ const providerColors: Record<string, string> = {
   antigravity: "bg-pink-500/20 text-pink-400 border-pink-500/30",
   claude: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   codex: "bg-green-500/20 text-green-400 border-green-500/30",
+  copilot: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  "github-copilot": "bg-purple-500/20 text-purple-400 border-purple-500/30",
   gemini: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   "gemini-web": "bg-sky-500/20 text-sky-400 border-sky-500/30",
   iflow: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
@@ -34,6 +37,8 @@ const providerIcons: Record<string, string> = {
   antigravity: "/logos/antigravity.webp",
   claude: "/logos/claude.svg",
   codex: "/logos/openai.svg",
+  copilot: "/logos/copilot.svg",
+  "github-copilot": "/logos/copilot.svg",
   gemini: "/logos/gemini.svg",
   "gemini-web": "/logos/gemini.svg",
   "gemini-cli": "/logos/gemini.svg",
@@ -41,6 +46,25 @@ const providerIcons: Record<string, string> = {
   kiro: "/logos/kiro.svg",
   qwen: "/logos/qwen.svg",
   vertex: "/logos/vertex.svg",
+};
+
+const getProviderDisplayName = (provider: string): string => {
+  const names: Record<string, string> = {
+    antigravity: "Antigravity",
+    claude: "Claude",
+    codex: "Codex",
+    copilot: "GitHub Copilot",
+    gemini: "Gemini",
+    "gemini-web": "Gemini-web",
+    iflow: "iFlow",
+    kiro: "Kiro",
+    kimi: "Kimi",
+    qwen: "Qwen",
+    vertex: "Vertex",
+  };
+
+  const normalized = normalizeProvider(provider);
+  return names[normalized] || provider;
 };
 
 export function AuthFilesPage() {
@@ -143,41 +167,40 @@ export function AuthFilesPage() {
       return;
     }
 
-    // Determine a model to test with based on provider
-    // Using ProxyPal's model IDs that map to each provider's auth
-    let modelId: string | null = null;
-    if (p.includes("claude")) {
-      modelId = "claude-sonnet-4-5";
-    } else if (p.includes("gemini-web")) {
-      modelId = "gemini-2.5-flash-web";
-    } else if (p.includes("gemini") || p.includes("vertex")) {
-      modelId = "gemini-2.5-flash";
-    } else if (p.includes("codex")) {
-      modelId = "gpt-5.1-codex-mini";
-    } else if (p.includes("qwen")) {
-      modelId = "glm-4.5";
-    } else if (p.includes("deepseek")) {
-      modelId = "deepseek-chat";
-    } else if (p.includes("iflow")) {
-      modelId = "qwen3-coder-plus";
-    } else if (p.includes("antigravity")) {
-      modelId = "gemini-2.5-flash";
-    } else if (p.includes("kimi")) {
-      modelId = "kimi-k2.5";
-    }
-
-    if (!modelId) {
-      toastStore.error(
-        t("authFiles.toasts.unknownProviderCannotDetermineTestModel", {
-          provider: file.provider,
-        }),
-      );
-      return;
-    }
+    const normalizedProvider = normalizeProvider(p);
 
     setTestingProvider(file.name);
     try {
-      const { testProviderConnection } = await import("../lib/tauri");
+      const { getAvailableModels, testProviderConnection } = await import("../lib/tauri");
+      const availableModels = await getAvailableModels();
+
+      const providerModels = availableModels.filter((model) => isModelForProvider(model, normalizedProvider));
+
+      const preferredCopilotModels = ["gpt-4.1", "gpt-5", "gpt-5-mini", "gpt-5.1-codex-mini"];
+      const fallbackCopilotModel =
+        normalizedProvider === "copilot"
+          ? preferredCopilotModels.find((candidate) =>
+              availableModels.some((model) => model.id.toLowerCase() === candidate),
+            )
+          : null;
+      const preferredModel =
+        normalizedProvider === "copilot"
+          ? preferredCopilotModels.find((candidate) =>
+              providerModels.some((model) => model.id.toLowerCase() === candidate),
+            )
+          : null;
+
+      const modelId = preferredModel || providerModels[0]?.id || fallbackCopilotModel;
+
+      if (!modelId) {
+        toastStore.error(
+          t("authFiles.toasts.couldNotDetermineTestModel", {
+            provider: getProviderDisplayName(file.provider),
+          }),
+        );
+        return;
+      }
+
       const result = await testProviderConnection(modelId);
       if (result.success) {
         toastStore.success(
@@ -279,11 +302,11 @@ export function AuthFilesPage() {
     if (f === "all") {
       return files();
     }
-    return files().filter((file) => file.provider.toLowerCase() === f);
+    return files().filter((file) => normalizeProvider(file.provider) === f);
   };
 
   const providers = () => {
-    const unique = new Set(files().map((f) => f.provider.toLowerCase()));
+    const unique = new Set(files().map((f) => normalizeProvider(f.provider)));
     return Array.from(unique).sort();
   };
 
@@ -423,14 +446,10 @@ export function AuthFilesPage() {
                       <img
                         alt={provider}
                         class="h-4 w-4"
-                        src={
-                          providerIcons[provider] ||
-                          providerIcons[provider.toLowerCase()] ||
-                          "/logos/openai.svg"
-                        }
+                        src={providerIcons[provider] || "/logos/openai.svg"}
                       />
-                      {provider.charAt(0).toUpperCase() + provider.slice(1)} (
-                      {files().filter((f) => f.provider.toLowerCase() === provider).length})
+                      {getProviderDisplayName(provider)} (
+                      {files().filter((f) => normalizeProvider(f.provider) === provider).length})
                     </button>
                   )}
                 </For>
@@ -479,11 +498,7 @@ export function AuthFilesPage() {
                             <img
                               alt={file.provider}
                               class="h-6 w-6"
-                              src={
-                                providerIcons[file.provider.toLowerCase()] ||
-                                providerIcons[file.provider] ||
-                                "/logos/openai.svg"
-                              }
+                              src={providerIcons[normalizeProvider(file.provider)] || "/logos/openai.svg"}
                             />
                           </div>
 
@@ -494,11 +509,11 @@ export function AuthFilesPage() {
                               </span>
                               <span
                                 class={`rounded border px-2 py-0.5 text-xs font-medium ${
-                                  providerColors[file.provider.toLowerCase()] ||
+                                  providerColors[normalizeProvider(file.provider)] ||
                                   "border-gray-200 bg-gray-100 text-gray-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400"
                                 }`}
                               >
-                                {file.provider}
+                                {getProviderDisplayName(file.provider)}
                               </span>
                               <Show when={file.status === "error"}>
                                 <span class="rounded border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">

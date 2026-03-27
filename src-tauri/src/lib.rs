@@ -214,8 +214,31 @@ fn is_updater_supported() -> Result<serde_json::Value, String> {
     }
 }
 
+#[cfg(debug_assertions)]
+fn cleanup_dev_webview_cache() {
+    if let Some(local_app_data) = dirs::data_local_dir() {
+        let candidates = [
+            local_app_data.join("com.proxypal.app").join("EBWebView"),
+            local_app_data.join("ProxyPal").join("EBWebView"),
+            local_app_data.join("com.proxypal.app").join("WebView2"),
+            local_app_data.join("ProxyPal").join("WebView2"),
+        ];
+
+        for path in candidates {
+            if path.exists() {
+                let _ = std::fs::remove_dir_all(&path);
+            }
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn cleanup_dev_webview_cache() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    cleanup_dev_webview_cache();
+
     // Migrate old format to split storage on first run
     migrate_to_split_storage();
 
@@ -350,6 +373,7 @@ pub fn run() {
             commands::proxy::stop_proxy,
             // Copilot Management
             commands::copilot::get_copilot_status,
+            commands::copilot::set_active_copilot_auth,
             commands::copilot::start_copilot,
             commands::copilot::stop_copilot,
             commands::copilot::check_copilot_health,

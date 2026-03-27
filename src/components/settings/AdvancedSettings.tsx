@@ -13,6 +13,7 @@ import {
   setOAuthExcludedModels,
   setWebsocketAuth,
 } from "../../lib/tauri";
+import { deriveModelProvider } from "../../lib/model-provider";
 import { appStore } from "../../stores/app";
 import { themeStore } from "../../stores/theme";
 import { toastStore } from "../../stores/toast";
@@ -381,27 +382,32 @@ export function AdvancedSettings(props: AdvancedSettingsProps) {
     const models = availableModels();
     const groupedModels = {
       anthropic: models
-        .filter((m) => m.ownedBy === "anthropic")
+        .filter((m) => deriveModelProvider(m) === "anthropic")
         .map((m) => ({ label: m.id, value: m.id })),
       copilot: models
-        .filter(
-          (m) => m.ownedBy === "copilot" || (m.ownedBy === "claude" && m.id.startsWith("copilot-")),
-        )
+        .filter((m) => deriveModelProvider(m) === "copilot")
         .map((m) => ({ label: m.id, value: m.id })),
       google: models
-        .filter((m) => m.ownedBy === "google" || m.ownedBy === "antigravity")
+        .filter((m) => {
+          const provider = deriveModelProvider(m);
+          return provider === "google" || provider === "antigravity";
+        })
         .map((m) => ({ label: m.id, value: m.id })),
-      iflow: models.filter((m) => m.ownedBy === "iflow").map((m) => ({ label: m.id, value: m.id })),
+      iflow: models
+        .filter((m) => deriveModelProvider(m) === "iflow")
+        .map((m) => ({ label: m.id, value: m.id })),
       kimi: models
-        .filter((m) => m.ownedBy === "kimi" || m.id.startsWith("kimi-"))
+        .filter((m) => deriveModelProvider(m) === "kimi")
         .map((m) => ({ label: m.id, value: m.id })),
       kiro: models
-        .filter((m) => m.ownedBy === "kiro" || m.id.startsWith("kiro-"))
+        .filter((m) => deriveModelProvider(m) === "kiro")
         .map((m) => ({ label: m.id, value: m.id })),
       openai: models
-        .filter((m) => m.ownedBy === "openai")
+        .filter((m) => deriveModelProvider(m) === "openai")
         .map((m) => ({ label: m.id, value: m.id })),
-      qwen: models.filter((m) => m.ownedBy === "qwen").map((m) => ({ label: m.id, value: m.id })),
+      qwen: models
+        .filter((m) => deriveModelProvider(m) === "qwen")
+        .map((m) => ({ label: m.id, value: m.id })),
     };
 
     const builtInModels = {

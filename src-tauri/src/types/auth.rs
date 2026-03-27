@@ -17,6 +17,7 @@ pub struct AuthStatus {
     pub vertex: u32,
     pub kiro: u32,
     pub antigravity: u32,
+    pub copilot: u32,
     pub kimi: u32,
 }
 
@@ -32,6 +33,7 @@ impl Default for AuthStatus {
             vertex: 0,
             kiro: 0,
             antigravity: 0,
+            copilot: 0,
             kimi: 0,
         }
     }

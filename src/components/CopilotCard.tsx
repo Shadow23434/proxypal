@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useI18n } from "../i18n";
 import {
   checkCopilotHealth,
@@ -19,8 +19,11 @@ import type { CopilotApiDetection, CopilotConfig, CopilotStatus } from "../lib/t
 
 interface CopilotCardProps {
   config: CopilotConfig;
+  copilotAccounts?: { authIndex: string; id: string; label: string; name: string }[];
   onConfigChange: (config: CopilotConfig) => void;
+  onSelectAccount?: (authIndex: string) => Promise<void>;
   proxyRunning: boolean;
+  switchingAccount?: boolean;
 }
 
 export function CopilotCard(props: CopilotCardProps) {
@@ -504,6 +507,25 @@ export function CopilotCard(props: CopilotCardProps) {
                   <option value="enterprise">{t("copilot.accountTypes.enterprise")}</option>
                 </select>
               </div>
+              <Show when={(props.copilotAccounts?.length || 0) > 0 && props.onSelectAccount}>
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {t("copilot.activeAccount")}
+                  </label>
+                  <select
+                    class="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    disabled={props.switchingAccount}
+                    onChange={(e) => void props.onSelectAccount?.(e.currentTarget.value)}
+                    value={
+                      props.config.activeAuthIndex || props.copilotAccounts?.[0]?.authIndex || ""
+                    }
+                  >
+                    <For each={props.copilotAccounts}>
+                      {(account) => <option value={account.authIndex}>{account.label}</option>}
+                    </For>
+                  </select>
+                </div>
+              </Show>
               <div class="flex items-center justify-between">
                 <div>
                   <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">

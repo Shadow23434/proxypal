@@ -41,6 +41,7 @@ function createAppStore() {
   const [authStatus, setAuthStatus] = createSignal<AuthStatus>({
     antigravity: 0,
     claude: 0,
+    copilot: 0,
     gemini: 0,
     "gemini-web": 0,
     iflow: 0,
@@ -61,6 +62,7 @@ function createAppStore() {
     autoStart: true,
     copilot: {
       accountType: "individual",
+      activeAuthIndex: "",
       enabled: false,
       githubToken: "",
       port: 4141,

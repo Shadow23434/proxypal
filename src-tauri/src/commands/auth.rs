@@ -69,6 +69,9 @@ fn overlay_proxy_auth_counts(auth: &mut AuthStatus, proxy_status: &crate::types:
     if let Some(count) = provider_count_from_proxy(providers.antigravity.as_ref()) {
         auth.antigravity = count;
     }
+    if let Some(count) = provider_count_from_proxy(providers.copilot.as_ref()) {
+        auth.copilot = count;
+    }
     if let Some(count) = provider_count_from_proxy(providers.kimi.as_ref()) {
         auth.kimi = count;
     }
@@ -206,6 +209,10 @@ pub async fn get_device_code(
         ),
         "qwen" => format!(
             "http://127.0.0.1:{}/v0/management/qwen-auth-url",
+            port
+        ),
+        "copilot" => format!(
+            "http://127.0.0.1:{}/v0/management/github-auth-url",
             port
         ),
         _ => return Err(format!("Device code flow not supported for provider: {}", provider)),
@@ -477,6 +484,8 @@ pub async fn refresh_auth_status(
                     new_auth.kiro += 1;
                 } else if filename.starts_with("antigravity-") {
                     new_auth.antigravity += 1;
+                } else if filename.starts_with("copilot-") || filename.starts_with("github-copilot-") {
+                    new_auth.copilot += 1;
                 } else if filename.starts_with("kimi-") {
                     new_auth.kimi += 1;
                 }
@@ -516,7 +525,7 @@ pub async fn complete_oauth(
 
     match provider.as_str() {
         "claude" | "openai" | "gemini" | "gemini-web" | "qwen" | "iflow" | "vertex"
-        | "kiro" | "antigravity" | "kimi" => {}
+        | "kiro" | "antigravity" | "copilot" | "kimi" => {}
         _ => return Err(format!("Unknown provider: {}", provider)),
     }
 
@@ -559,6 +568,9 @@ pub async fn disconnect_provider(
                     "vertex" => filename.starts_with("vertex-"),
                     "kiro" => filename.starts_with("kiro-"),
                     "antigravity" => filename.starts_with("antigravity-"),
+                    "copilot" => {
+                        filename.starts_with("copilot-") || filename.starts_with("github-copilot-")
+                    }
                     "kimi" => filename.starts_with("kimi-"),
                     _ => false,
                 };
@@ -584,6 +596,7 @@ pub async fn disconnect_provider(
         "vertex" => auth.vertex = 0,
         "kiro" => auth.kiro = 0,
         "antigravity" => auth.antigravity = 0,
+        "copilot" => auth.copilot = 0,
         "kimi" => auth.kimi = 0,
         _ => return Err(format!("Unknown provider: {}", provider)),
     }

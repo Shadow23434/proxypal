@@ -9,6 +9,10 @@ export interface CopilotStatus {
   running: boolean;
 }
 
+export interface CopilotAccountSelection {
+  authIndex: string;
+}
+
 // Copilot API detection result
 export interface CopilotApiDetection {
   checkedCopilotPaths: string[];
@@ -51,6 +55,10 @@ export async function detectCopilotApi(): Promise<CopilotApiDetection> {
 
 export async function installCopilotApi(): Promise<CopilotApiInstallResult> {
   return invoke("install_copilot_api");
+}
+
+export async function setActiveCopilotAuth(authIndex: string): Promise<CopilotAccountSelection> {
+  return invoke("set_active_copilot_auth", { authIndex });
 }
 
 export async function onCopilotStatusChanged(

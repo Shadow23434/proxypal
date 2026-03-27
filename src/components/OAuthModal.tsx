@@ -9,6 +9,7 @@ import type { Provider } from "../lib/tauri";
 const providerLogos: Record<Provider, string> = {
   antigravity: "/logos/antigravity.webp",
   claude: "/logos/claude.svg",
+  copilot: "/logos/copilot.svg",
   gemini: "/logos/gemini.svg",
   "gemini-web": "/logos/gemini.svg",
   iflow: "/logos/iflow.svg",

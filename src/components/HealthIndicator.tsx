@@ -162,6 +162,11 @@ export function HealthPanel() {
       id: "antigravity" as const,
       name: "Antigravity",
     },
+    {
+      connected: authStatus().copilot,
+      id: "copilot" as const,
+      name: "GitHub Copilot",
+    },
   ];
 
   const connectedProviders = () => providers.filter((p) => p.connected);

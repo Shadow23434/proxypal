@@ -41,6 +41,7 @@ pub async fn get_auth_files(state: State<'_, AppState>) -> Result<Vec<AuthFile>,
                                 .replace("\"status_message\"", "\"statusMessage\"")
                                 .replace("\"runtime_only\"", "\"runtimeOnly\"")
                                 .replace("\"account_type\"", "\"accountType\"")
+                                .replace("\"auth_index\"", "\"authIndex\"")
                                 .replace("\"created_at\"", "\"createdAt\"")
                                 .replace("\"updated_at\"", "\"updatedAt\"")
                                 .replace("\"last_refresh\"", "\"lastRefresh\"")

@@ -1,11 +1,15 @@
 import { type Component, createMemo, createSignal, For, Show } from "solid-js";
+import { deriveModelProvider } from "../lib/model-provider";
 import { ModelsList } from "./ModelsList";
 
 import type { ModelInfo } from "./ModelCard";
+import type { ModelStatusInfo } from "./settings/ModelsSettings";
 
 interface ModelsWidgetProps {
   loading?: boolean;
+  modelStatuses: Record<string, ModelStatusInfo>;
   models: ModelInfo[];
+  onTestModel: (modelId: string) => void | Promise<void>;
 }
 
 interface ProviderGroup {
@@ -45,24 +49,6 @@ const getProviderColor = (ownedBy: string): string => {
   return colors[ownedBy] || "bg-gray-500";
 };
 
-// Derive provider to fix aliasing issues (e.g., antigravity models aliased to Gemini IDs)
-const deriveProvider = (model: ModelInfo): string => {
-  const id = model.id.toLowerCase();
-
-  // GitHub Copilot
-  if (id.startsWith("github-copilot/")) {
-    return "copilot";
-  }
-
-  // Antigravity aliases (Claude models via Vertex AI)
-  if (id.includes("antigravity") || id.startsWith("antigravity-")) {
-    return "antigravity";
-  }
-
-  // Default to backend ownedBy
-  return model.ownedBy.toLowerCase();
-};
-
 export const ModelsWidget: Component<ModelsWidgetProps> = (props) => {
   const [expanded, setExpanded] = createSignal(false);
   const [selectedProvider, setSelectedProvider] = createSignal<string | null>(null);
@@ -72,7 +58,7 @@ export const ModelsWidget: Component<ModelsWidgetProps> = (props) => {
     const groups: Record<string, ModelInfo[]> = {};
 
     for (const model of props.models) {
-      const provider = deriveProvider(model);
+      const provider = deriveModelProvider(model);
       if (!groups[provider]) {
         groups[provider] = [];
       }
@@ -209,7 +195,9 @@ export const ModelsWidget: Component<ModelsWidgetProps> = (props) => {
                   selectedProvider() === group.provider || providerGroups().length === 1
                 }
                 maxVisible={8}
+                modelStatuses={props.modelStatuses}
                 models={group.models}
+                onTestModel={props.onTestModel}
                 title={group.displayName}
               />
             )}

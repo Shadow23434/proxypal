@@ -17,6 +17,7 @@ export interface HealthStatus {
 export interface ProviderHealth {
   antigravity: HealthStatus;
   claude: HealthStatus;
+  copilot: HealthStatus;
   gemini: HealthStatus;
   "gemini-web": HealthStatus;
   iflow: HealthStatus;

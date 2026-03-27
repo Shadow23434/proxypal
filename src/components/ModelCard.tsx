@@ -1,6 +1,7 @@
 import { ProviderBadge } from "./ProviderBadge";
 
 import type { Component } from "solid-js";
+import type { ModelStatusInfo } from "./settings/ModelsSettings";
 
 export interface ModelInfo {
   contextWindow?: string;
@@ -14,6 +15,7 @@ export interface ModelInfo {
 interface ModelCardProps {
   compact?: boolean;
   model: ModelInfo;
+  testStatus?: ModelStatusInfo;
 }
 
 // Helper to get human-readable model name
@@ -56,11 +58,39 @@ const supportsThinking = (modelId: string): boolean => {
   );
 };
 
+const getStatusBadgeClasses = (status: ModelStatusInfo["status"]) => {
+  if (status === "available") {
+    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+  }
+  if (status === "failed") {
+    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  }
+  if (status === "testing") {
+    return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+  }
+  return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+};
+
+const getStatusLabel = (status: ModelStatusInfo["status"]) => {
+  if (status === "available") {
+    return "Available";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  if (status === "testing") {
+    return "Testing...";
+  }
+  return "Untested";
+};
+
 export const ModelCard: Component<ModelCardProps> = (props) => {
   const compact = () => props.compact ?? false;
   const displayName = () => props.model.displayName || getDisplayName(props.model.id);
   const contextWindow = () => props.model.contextWindow || getContextWindow(props.model.id);
   const hasThinking = () => props.model.supportsThinking ?? supportsThinking(props.model.id);
+  const status = () => props.testStatus?.status ?? "untested";
+  const statusMessage = () => props.testStatus?.message;
 
   if (compact()) {
     return (
@@ -71,6 +101,12 @@ export const ModelCard: Component<ModelCardProps> = (props) => {
           </span>
         </div>
         <div class="flex flex-shrink-0 items-center gap-2">
+          <span
+            class={`inline-flex items-center rounded px-2 py-0.5 text-xs ${getStatusBadgeClasses(status())}`}
+            title={statusMessage()}
+          >
+            {getStatusLabel(status())}
+          </span>
           <ProviderBadge size="sm" source={props.model.source} />
         </div>
       </div>
@@ -86,7 +122,15 @@ export const ModelCard: Component<ModelCardProps> = (props) => {
           </h4>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{displayName()}</p>
         </div>
-        <ProviderBadge size="sm" source={props.model.source} />
+        <div class="flex items-center gap-2">
+          <span
+            class={`inline-flex items-center rounded px-2 py-0.5 text-xs ${getStatusBadgeClasses(status())}`}
+            title={statusMessage()}
+          >
+            {getStatusLabel(status())}
+          </span>
+          <ProviderBadge size="sm" source={props.model.source} />
+        </div>
       </div>
 
       <div class="mt-2 flex items-center gap-2">

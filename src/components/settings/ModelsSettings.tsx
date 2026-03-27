@@ -1,12 +1,26 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { useI18n } from "../../i18n";
-import { configureCliAgent, detectCliAgents, getAvailableModels } from "../../lib/tauri";
+import {
+  configureCliAgent,
+  detectCliAgents,
+  getAvailableModels,
+  testProviderConnection,
+} from "../../lib/tauri";
 import { appStore } from "../../stores/app";
 import { toastStore } from "../../stores/toast";
 import { ModelsWidget } from "../ModelsWidget";
 import { Button } from "../ui";
 
 import type { AgentStatus, AppConfig, AvailableModel } from "../../lib/tauri";
+
+type ModelTestStatus = "untested" | "testing" | "available" | "failed";
+
+export interface ModelStatusInfo {
+  latencyMs?: number;
+  message?: string;
+  status: ModelTestStatus;
+  testedAt?: number;
+}
 
 interface ModelsSettingsProps {
   config: AppConfig;
@@ -20,6 +34,7 @@ export function ModelsSettings(props: ModelsSettingsProps) {
   const [models, setModels] = createSignal<AvailableModel[]>([]);
   const [agents, setAgents] = createSignal<AgentStatus[]>([]);
   const [configuringAgent, setConfiguringAgent] = createSignal<string | null>(null);
+  const [modelStatuses, setModelStatuses] = createSignal<Record<string, ModelStatusInfo>>({});
 
   onMount(async () => {
     // Load models if proxy is running
@@ -40,6 +55,43 @@ export function ModelsSettings(props: ModelsSettingsProps) {
       console.error("Failed to load agents:", error);
     }
   });
+
+  const testModel = async (modelId: string) => {
+    const currentStatus = modelStatuses()[modelId]?.status;
+    if (currentStatus && currentStatus !== "untested") {
+      return;
+    }
+
+    setModelStatuses((prev) => ({
+      ...prev,
+      [modelId]: {
+        ...prev[modelId],
+        status: "testing",
+      },
+    }));
+
+    try {
+      const result = await testProviderConnection(modelId);
+      setModelStatuses((prev) => ({
+        ...prev,
+        [modelId]: {
+          latencyMs: result.latencyMs,
+          message: result.message,
+          status: result.success ? "available" : "failed",
+          testedAt: Date.now(),
+        },
+      }));
+    } catch (error) {
+      setModelStatuses((prev) => ({
+        ...prev,
+        [modelId]: {
+          message: error instanceof Error ? error.message : String(error),
+          status: "failed",
+          testedAt: Date.now(),
+        },
+      }));
+    }
+  };
 
   const handleConfigureAgent = async (agentId: string) => {
     if (!appStore.proxyStatus().running) {
@@ -78,7 +130,12 @@ export function ModelsSettings(props: ModelsSettingsProps) {
         <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
           Available Models
         </h2>
-        <ModelsWidget loading={!appStore.proxyStatus().running} models={models()} />
+        <ModelsWidget
+          loading={!appStore.proxyStatus().running}
+          modelStatuses={modelStatuses()}
+          models={models()}
+          onTestModel={testModel}
+        />
       </div>
 
       {/* CLI Agents */}

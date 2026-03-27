@@ -16,6 +16,39 @@ struct ModelsApiModel {
     owned_by: String,
 }
 
+fn is_copilot_model_id(model_id: &str) -> bool {
+    let id = model_id.to_lowercase();
+    id.starts_with("github-copilot/")
+        || id.starts_with("copilot-")
+        || matches!(
+            id.as_str(),
+            "gpt-4.1"
+                | "gpt-5"
+                | "gpt-5-mini"
+                | "gpt-5-codex"
+                | "gpt-5.1"
+                | "gpt-5.1-codex"
+                | "gpt-5.1-codex-mini"
+                | "gpt-4o"
+                | "gpt-4"
+                | "gpt-4-turbo"
+                | "o1"
+                | "o1-mini"
+                | "grok-code-fast-1"
+                | "raptor-mini"
+                | "gemini-2.5-pro"
+                | "gemini-3-pro-preview"
+                | "gemini-3.1-pro-high"
+                | "gemini-3.1-pro-low"
+                | "claude-haiku-4.5"
+                | "claude-opus-4.1"
+                | "claude-sonnet-4"
+                | "claude-sonnet-4.5"
+                | "claude-opus-4.5"
+                | "claude-opus-4.6"
+        )
+}
+
 #[tauri::command]
 pub fn get_gpt_reasoning_models() -> Vec<String> {
     crate::GPT5_BASE_MODELS.iter().map(|s| s.to_string()).collect()
@@ -74,45 +107,47 @@ pub async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<Avai
     let models: Vec<AvailableModel> = api_response.data
         .into_iter()
         .map(|m| {
-            // Determine source based on owned_by and auth status
-            let source = match m.owned_by.as_str() {
-                "google" => {
-                    // Google models can come from Vertex AI, Gemini API, or Gemini Web
-                    if has_vertex && has_gemini_api && has_gemini_web {
-                        "vertex+gemini-api+gemini-web".to_string()
-                    } else if has_vertex && has_gemini_api {
-                        "vertex+gemini-api".to_string()
-                    } else if has_vertex && has_gemini_web {
-                        "vertex+gemini-web".to_string()
-                    } else if has_gemini_api && has_gemini_web {
-                        "gemini-api+gemini-web".to_string()
-                    } else if has_vertex {
-                        "vertex".to_string()
-                    } else if has_gemini_api {
-                        "gemini-api".to_string()
-                    } else if has_gemini_web {
-                        "gemini-web".to_string()
-                    } else {
-                        "google".to_string() // Fallback
+            // Determine source based on route/auth status
+            let source = if m.owned_by == "copilot" || (has_copilot && is_copilot_model_id(&m.id)) {
+                "copilot".to_string()
+            } else {
+                match m.owned_by.as_str() {
+                    "google" => {
+                        // Google models can come from Vertex AI, Gemini API, or Gemini Web
+                        if has_vertex && has_gemini_api && has_gemini_web {
+                            "vertex+gemini-api+gemini-web".to_string()
+                        } else if has_vertex && has_gemini_api {
+                            "vertex+gemini-api".to_string()
+                        } else if has_vertex && has_gemini_web {
+                            "vertex+gemini-web".to_string()
+                        } else if has_gemini_api && has_gemini_web {
+                            "gemini-api+gemini-web".to_string()
+                        } else if has_vertex {
+                            "vertex".to_string()
+                        } else if has_gemini_api {
+                            "gemini-api".to_string()
+                        } else if has_gemini_web {
+                            "gemini-web".to_string()
+                        } else {
+                            "google".to_string() // Fallback
+                        }
                     }
-                },
-                "anthropic" => {
-                    if !config.claude_api_keys.is_empty() {
-                        "api-key".to_string()
-                    } else {
-                        "oauth".to_string()
+                    "anthropic" => {
+                        if !config.claude_api_keys.is_empty() {
+                            "api-key".to_string()
+                        } else {
+                            "oauth".to_string()
+                        }
                     }
-                },
-                "openai" => {
-                    if has_copilot {
-                        "copilot".to_string()
-                    } else if !config.codex_api_keys.is_empty() {
-                        "api-key".to_string()
-                    } else {
-                        "oauth".to_string()
+                    "openai" => {
+                        if !config.codex_api_keys.is_empty() {
+                            "api-key".to_string()
+                        } else {
+                            "oauth".to_string()
+                        }
                     }
-                },
-                owner => owner.to_string(),
+                    owner => owner.to_string(),
+                }
             };
             
             AvailableModel {

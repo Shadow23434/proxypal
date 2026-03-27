@@ -217,6 +217,7 @@ export interface AmpOpenAIProvider {
 // GitHub Copilot configuration (via copilot-api)
 export interface CopilotConfig {
   accountType: string; // "individual", "business", "enterprise"
+  activeAuthIndex: string;
   enabled: boolean;
   githubToken: string;
   port: number;

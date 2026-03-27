@@ -2,14 +2,41 @@ use crate::state::AppState;
 use crate::types::{CopilotApiDetection, CopilotApiInstallResult, CopilotStatus};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
+use serde::Serialize;
 
 // ============================================
 // Copilot API Management (via copilot-api)
 // ============================================
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopilotAccountSelection {
+    pub auth_index: String,
+}
+
 #[tauri::command]
 pub fn get_copilot_status(state: State<AppState>) -> CopilotStatus {
     state.copilot_status.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn set_active_copilot_auth(
+    state: State<AppState>,
+    auth_index: String,
+) -> Result<CopilotAccountSelection, String> {
+    let selected = auth_index.trim().to_string();
+    if selected.is_empty() {
+        return Err("Auth index is required".to_string());
+    }
+
+    let next_config = {
+        let mut config = state.config.lock().unwrap();
+        config.copilot.active_auth_index = selected.clone();
+        config.clone()
+    };
+    crate::commands::config::save_config(state, next_config)?;
+
+    Ok(CopilotAccountSelection { auth_index: selected })
 }
 
 #[tauri::command]

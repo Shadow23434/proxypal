@@ -29,6 +29,7 @@ import {
   type DeviceCodeResponse,
   detectCliAgents,
   disconnectProvider,
+  getAuthFiles,
   getDeviceCode,
   getOAuthUrl,
   getUsageStats,
@@ -39,6 +40,7 @@ import {
   type Provider,
   pollOAuthStatus,
   refreshAuthStatus,
+  setActiveCopilotAuth,
   startProxy,
   stopProxy,
   syncUsageFromProxy,
@@ -73,6 +75,11 @@ const providers = [
     logo: "/logos/antigravity.webp",
     name: "Antigravity",
     provider: "antigravity" as Provider,
+  },
+  {
+    logo: "/logos/copilot.svg",
+    name: "GitHub Copilot",
+    provider: "copilot" as Provider,
   },
   {
     logo: "/logos/kiro.svg",
@@ -179,9 +186,13 @@ export function DashboardPage() {
   // Device Code Modal state
   const [deviceCodeProvider, setDeviceCodeProvider] = createSignal<Provider | null>(null);
   const [deviceCodeData, setDeviceCodeData] = createSignal<DeviceCodeResponse | null>(null);
+  const [copilotAccounts, setCopilotAccounts] = createSignal<
+    { authIndex: string; id: string; label: string; name: string }[]
+  >([]);
+  const [copilotSwitching, setCopilotSwitching] = createSignal(false);
 
   // Providers that support device-code login
-  const deviceCodeProviders = new Set<Provider>(["openai", "qwen"]);
+  const deviceCodeProviders = new Set<Provider>(["openai", "qwen", "copilot"]);
 
   const getProviderName = (provider: Provider): string => {
     const found = providers.find((p) => p.provider === provider);
@@ -191,6 +202,54 @@ export function DashboardPage() {
   // Copilot config handler
   const handleCopilotConfigChange = (copilotConfig: CopilotConfig) => {
     setConfig({ ...config(), copilot: copilotConfig });
+  };
+
+  const loadCopilotAccounts = async () => {
+    try {
+      const files = await getAuthFiles();
+      const accounts = files
+        .filter((file) => {
+          const provider = (file.provider || "").toLowerCase();
+          return (
+            provider === "github-copilot" ||
+            provider === "copilot" ||
+            (file.name || "").startsWith("github-copilot-")
+          );
+        })
+        .filter((file) => !file.disabled && file.authIndex)
+        .map((file) => ({
+          authIndex: file.authIndex!,
+          id: file.id,
+          label: file.label || file.email || file.account || file.name,
+          name: file.name,
+        }));
+      setCopilotAccounts(accounts);
+    } catch {
+      setCopilotAccounts([]);
+    }
+  };
+
+  const handleSwitchCopilotAccount = async (authIndex: string) => {
+    if (copilotSwitching()) {
+      return;
+    }
+
+    setCopilotSwitching(true);
+    try {
+      await setActiveCopilotAuth(authIndex);
+      const nextConfig = {
+        ...config(),
+        copilot: { ...config().copilot, activeAuthIndex: authIndex },
+      };
+      setConfig(nextConfig);
+      await loadCopilotAccounts();
+      const selectedAccount = copilotAccounts().find((account) => account.authIndex === authIndex);
+      toastStore.success("GitHub Copilot account selected", selectedAccount?.label || authIndex);
+    } catch (error) {
+      toastStore.error(t("copilot.toasts.failedToSaveSettings"), String(error));
+    } finally {
+      setCopilotSwitching(false);
+    }
   };
 
   // Load data on mount
@@ -244,6 +303,8 @@ export function DashboardPage() {
     } catch (error) {
       console.error("Failed to load usage stats:", error);
     }
+
+    await loadCopilotAccounts();
 
     // Listen for new requests and refresh stats only
     // History is handled by RequestMonitor via centralized store
@@ -386,6 +447,11 @@ export function DashboardPage() {
       return;
     }
 
+    if (provider === "copilot") {
+      await handleDeviceCodeConnect(provider);
+      return;
+    }
+
     // Vertex uses service account import, not OAuth
     if (provider === "vertex") {
       setConnecting(provider);
@@ -451,6 +517,12 @@ export function DashboardPage() {
       setDeviceCodeData(dcData);
       setDeviceCodeProvider(provider);
       setConnecting(null);
+      if (provider === "copilot") {
+        toastStore.info(
+          t("copilot.toasts.githubAuthenticationRequired"),
+          t("copilot.toasts.checkTerminalForDeviceCode"),
+        );
+      }
     } catch (error) {
       console.error("Failed to get device code:", error);
       setConnecting(null);
@@ -553,6 +625,7 @@ export function DashboardPage() {
       setAuthStatus(newAuth);
       setGeminiWebCookieModalOpen(false);
       setOauthLoading(false);
+      await loadCopilotAccounts();
       markProviderConnected("gemini-web", t("dashboard.toasts.geminiWebCookiesSaved"));
     } catch (error) {
       setOauthLoading(false);
@@ -565,6 +638,7 @@ export function DashboardPage() {
       await disconnectProvider(provider);
       const newAuth = await refreshAuthStatus();
       setAuthStatus(newAuth);
+      await loadCopilotAccounts();
       toastStore.success(
         t("dashboard.toasts.providerDisconnected", {
           provider: getProviderName(provider),
@@ -790,8 +864,11 @@ export function DashboardPage() {
           {/* === ZONE 3.6: GitHub Copilot Config === */}
           <CopilotCard
             config={config().copilot}
+            copilotAccounts={copilotAccounts()}
             onConfigChange={handleCopilotConfigChange}
+            onSelectAccount={handleSwitchCopilotAccount}
             proxyRunning={proxyStatus().running}
+            switchingAccount={copilotSwitching()}
           />
 
           {/* === ZONE 4: API Endpoint === */}
@@ -962,6 +1039,7 @@ export function DashboardPage() {
           setDeviceCodeData(null);
           const newAuth = await refreshAuthStatus();
           setAuthStatus(newAuth);
+          await loadCopilotAccounts();
         }}
         provider={deviceCodeProvider()}
         providerName={deviceCodeProvider() ? getProviderName(deviceCodeProvider()!) : ""}

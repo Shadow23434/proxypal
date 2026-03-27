@@ -6,6 +6,7 @@ import { toastStore } from "../stores/toast";
 import type { DeviceCodeResponse, Provider } from "../lib/tauri/auth";
 
 const providerLogos: Record<string, string> = {
+  copilot: "/logos/copilot.svg",
   openai: "/logos/codex.svg",
   qwen: "/logos/qwen.webp",
   "gemini-web": "/logos/gemini.svg",

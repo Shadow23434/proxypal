@@ -259,8 +259,7 @@ export const en = {
       kiroConnectionOk: "Kiro connection OK{{latency}}",
       kiroTestFailed: "Kiro test failed",
       testFailed: "Test failed",
-      unknownProviderCannotDetermineTestModel:
-        "Unknown provider: {{provider}}. Cannot determine test model.",
+      couldNotDetermineTestModel: "Could not determine a test model for {{provider}}.",
     },
   },
   commandPalette: {
@@ -329,6 +328,7 @@ export const en = {
       stop: "Stop",
       stopping: "Stopping...",
     },
+    activeAccount: "Active account",
     authHelpDescription:
       "Check the terminal for your device code, then click below to authenticate.",
     availableModelsDescription:

@@ -256,7 +256,7 @@ export const zhCN = {
       kiroConnectionOk: "Kiro 连接正常{{latency}}",
       kiroTestFailed: "Kiro 测试失败",
       testFailed: "测试失败",
-      unknownProviderCannotDetermineTestModel: "未知提供商：{{provider}}。无法确定测试模型。",
+      couldNotDetermineTestModel: "无法为 {{provider}} 确定测试模型。",
     },
   },
   commandPalette: {
@@ -325,6 +325,7 @@ export const zhCN = {
       stop: "停止",
       stopping: "停止中...",
     },
+    activeAccount: "当前账号",
     authHelpDescription: "查看终端中的设备码，然后点击下方按钮完成认证。",
     availableModelsDescription: "可用模型：GPT-4o、Claude Sonnet 4、Claude Opus 4.5 等",
     enableHint: "启用后即可通过 GitHub Copilot 订阅访问 GPT-4、Claude 等模型",

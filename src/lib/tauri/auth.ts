@@ -12,6 +12,7 @@ export type Provider =
   | "vertex"
   | "kiro"
   | "antigravity"
+  | "copilot"
   | "kimi";
 
 export async function openOAuth(provider: Provider): Promise<string> {
@@ -58,6 +59,7 @@ export async function importVertexCredential(filePath: string): Promise<AuthStat
 export interface AuthStatus {
   antigravity: number;
   claude: number;
+  copilot: number;
   gemini: number;
   "gemini-web": number;
   iflow: number;
