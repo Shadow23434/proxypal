@@ -66,6 +66,13 @@ export const ProviderBadge: Component<ProviderBadgeProps> = (props) => {
           label: "Copilot",
           textColor: "text-orange-700 dark:text-orange-300",
         };
+      case "ollama":
+        return {
+          bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
+          dotColor: "bg-emerald-500",
+          label: "Ollama",
+          textColor: "text-emerald-700 dark:text-emerald-300",
+        };
       case "oauth":
         return {
           bgColor: "bg-indigo-100 dark:bg-indigo-900/30",

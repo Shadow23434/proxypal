@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use serde_json::json;
+
 fn main() {
     // Get the target triple for the current build
     let target = env::var("TARGET")
@@ -13,10 +15,11 @@ fn main() {
     let binary_path = binaries_dir.join(&binary_name);
 
     let is_ci = env::var("CI").is_ok();
-    // CARGO_PRIMARY_PACKAGE is set during check/build of the workspace root package.
-    // For `cargo check`, Tauri doesn't bundle sidecars, so we can skip validation.
-    // The release workflow downloads the binary before `cargo build`.
-    let is_check_only = env::var("PROXYPAL_SKIP_SIDECAR").is_ok();
+    let profile = env::var("PROFILE").unwrap_or_default();
+    let is_dev_profile = profile == "debug";
+    // For local dev/check flows, avoid mutating sidecar binaries because Windows may lock the .exe.
+    // Release/CI builds keep strict behavior.
+    let is_check_only = env::var("PROXYPAL_SKIP_SIDECAR").is_ok() || is_dev_profile;
 
     let needs_download = if !binary_path.exists() {
         println!("cargo:warning=Sidecar binary not found: {}", binary_name);
@@ -35,13 +38,8 @@ fn main() {
 
     if needs_download {
         if is_check_only {
-            // Create a dummy binary so tauri_build::build() doesn't fail
-            let _ = fs::create_dir_all(&binaries_dir);
-            fs::write(&binary_path, b"PLACEHOLDER").unwrap_or_else(|e| {
-                println!("cargo:warning=Failed to create placeholder binary: {}", e);
-            });
             println!(
-                "cargo:warning=Sidecar binary not available, using placeholder for check-only build"
+                "cargo:warning=Skipping sidecar download/repair for local dev or check build"
             );
         } else if is_ci {
             panic!(
@@ -56,7 +54,16 @@ fn main() {
         }
     }
 
-    tauri_build::build()
+    if is_dev_profile {
+        env::set_var("TAURI_CONFIG", json!({
+            "bundle": {
+                "externalBin": []
+            }
+        }).to_string());
+        tauri_build::try_build(tauri_build::Attributes::new()).unwrap();
+    } else {
+        tauri_build::build();
+    }
 }
 
 /// Validate that the file is a real executable, not a gzip archive or other invalid format.

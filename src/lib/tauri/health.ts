@@ -43,8 +43,17 @@ export interface ProviderTestResult {
 export async function testOpenAIProvider(
   baseUrl: string,
   apiKey: string,
+  headers?: Record<string, string>,
 ): Promise<ProviderTestResult> {
-  return invoke("test_openai_provider", { apiKey, baseUrl });
+  return invoke("test_openai_provider", { apiKey, baseUrl, headers });
+}
+
+export async function testOllamaProvider(
+  baseUrl: string,
+  apiKey: string,
+  headers?: Record<string, string>,
+): Promise<ProviderTestResult> {
+  return invoke("test_ollama_provider", { apiKey, baseUrl, headers });
 }
 
 export async function testProviderConnection(modelId: string): Promise<ProviderTestResult> {

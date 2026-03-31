@@ -5,6 +5,10 @@ use crate::state::AppState;
 use crate::config::save_config_to_file;
 use crate::types::{GeminiApiKey, ClaudeApiKey, CodexApiKey, VertexApiKey, OpenAICompatibleProvider};
 
+fn is_ollama_provider(provider: &OpenAICompatibleProvider) -> bool {
+    provider.api_type.as_deref() == Some("ollama")
+}
+
 // Convert Management API kebab-case keys to camelCase for frontend
 // The Management API returns data wrapped in an object like: { "gemini-api-key": [...] }
 // It may also return null for empty lists: { "gemini-api-key": null }
@@ -31,7 +35,9 @@ fn convert_api_key_response<T: serde::de::DeserializeOwned>(json: serde_json::Va
         .replace("\"base-url\"", "\"baseUrl\"")
         .replace("\"proxy-url\"", "\"proxyUrl\"")
         .replace("\"excluded-models\"", "\"excludedModels\"")
-        .replace("\"api-key-entries\"", "\"apiKeyEntries\"");
+        .replace("\"api-key-entries\"", "\"apiKeyEntries\"")
+        .replace("\"headers\"", "\"headers\"")
+        .replace("\"api-type\"", "\"apiType\"");
     serde_json::from_str(&converted).map_err(|e| e.to_string())
 }
 
@@ -43,7 +49,9 @@ fn convert_to_management_format<T: serde::Serialize>(data: &T) -> Result<serde_j
         .replace("\"baseUrl\"", "\"base-url\"")
         .replace("\"proxyUrl\"", "\"proxy-url\"")
         .replace("\"excludedModels\"", "\"excluded-models\"")
-        .replace("\"apiKeyEntries\"", "\"api-key-entries\"");
+        .replace("\"apiKeyEntries\"", "\"api-key-entries\"")
+        .replace("\"headers\"", "\"headers\"")
+        .replace("\"apiType\"", "\"api-type\"");
     serde_json::from_str(&converted).map_err(|e| e.to_string())
 }
 
@@ -340,11 +348,10 @@ pub async fn delete_vertex_api_key(state: State<'_, AppState>, index: usize) -> 
 // OpenAI-Compatible Providers
 // ============================================
 
-#[tauri::command]
-pub async fn get_openai_compatible_providers(state: State<'_, AppState>) -> Result<Vec<OpenAICompatibleProvider>, String> {
+async fn get_all_openai_compatible_providers(state: State<'_, AppState>) -> Result<Vec<OpenAICompatibleProvider>, String> {
     let port = state.config.lock().unwrap().port;
     let url = crate::get_management_url(port, "openai-compatibility");
-    
+
     let client = crate::build_management_client();
     let response = client
         .get(&url)
@@ -352,22 +359,34 @@ pub async fn get_openai_compatible_providers(state: State<'_, AppState>) -> Resu
         .send()
         .await
         .map_err(|e| format!("Failed to fetch OpenAI-compatible providers: {}", e))?;
-    
+
     if !response.status().is_success() {
         return Ok(Vec::new());
     }
-    
+
     let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
     convert_api_key_response(json, "openai-compatibility")
 }
 
 #[tauri::command]
+pub async fn get_openai_compatible_providers(state: State<'_, AppState>) -> Result<Vec<OpenAICompatibleProvider>, String> {
+    let providers = get_all_openai_compatible_providers(state).await?;
+    Ok(providers.into_iter().filter(|provider| !is_ollama_provider(provider)).collect())
+}
+
+#[tauri::command]
 pub async fn set_openai_compatible_providers(state: State<'_, AppState>, providers: Vec<OpenAICompatibleProvider>) -> Result<(), String> {
+    let existing_ollama = get_all_openai_compatible_providers(state.clone()).await?
+        .into_iter()
+        .filter(is_ollama_provider)
+        .collect::<Vec<_>>();
+    let merged_providers = providers.into_iter().chain(existing_ollama.into_iter()).collect::<Vec<_>>();
+
     let port = state.config.lock().unwrap().port;
     let url = crate::get_management_url(port, "openai-compatibility");
-    
+
     let client = crate::build_management_client();
-    let body = convert_to_management_format(&providers)?;
+    let body = convert_to_management_format(&merged_providers)?;
     
     let response = client
         .put(&url)
@@ -386,7 +405,7 @@ pub async fn set_openai_compatible_providers(state: State<'_, AppState>, provide
     // Persist to local config for restart persistence
     {
         let mut config = state.config.lock().unwrap();
-        config.amp_openai_providers = providers.iter().map(|p| {
+        config.amp_openai_providers = merged_providers.iter().map(|p| {
             crate::types::amp::AmpOpenAIProvider {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: p.name.clone(),
@@ -398,6 +417,8 @@ pub async fn set_openai_compatible_providers(state: State<'_, AppState>, provide
                         alias: model.alias.clone().unwrap_or_default(),
                     }).collect()
                 }).unwrap_or_default(),
+                headers: p.headers.clone(),
+                api_type: p.api_type.clone(),
             }
         }).collect();
     }
@@ -422,4 +443,86 @@ pub async fn delete_openai_compatible_provider(state: State<'_, AppState>, index
     }
     providers.remove(index);
     set_openai_compatible_providers(state, providers).await
+}
+
+#[tauri::command]
+pub async fn get_ollama_providers(state: State<'_, AppState>) -> Result<Vec<OpenAICompatibleProvider>, String> {
+    let providers = get_all_openai_compatible_providers(state).await?;
+    Ok(providers.into_iter().filter(is_ollama_provider).collect())
+}
+
+#[tauri::command]
+pub async fn set_ollama_providers(state: State<'_, AppState>, providers: Vec<OpenAICompatibleProvider>) -> Result<(), String> {
+    let existing_openai = get_all_openai_compatible_providers(state.clone()).await?
+        .into_iter()
+        .filter(|provider| !is_ollama_provider(provider))
+        .collect::<Vec<_>>();
+    let ollama_providers = providers
+        .into_iter()
+        .map(|mut provider| {
+            provider.api_type = Some("ollama".to_string());
+            provider
+        })
+        .collect::<Vec<_>>();
+    let merged_providers = existing_openai.into_iter().chain(ollama_providers.into_iter()).collect::<Vec<_>>();
+
+    let port = state.config.lock().unwrap().port;
+    let url = crate::get_management_url(port, "openai-compatibility");
+
+    let client = crate::build_management_client();
+    let body = convert_to_management_format(&merged_providers)?;
+    let response = client
+        .put(&url)
+        .header("X-Management-Key", &crate::get_management_key())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to set Ollama providers: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Failed to set Ollama providers: {} - {}", status, text));
+    }
+
+    {
+        let mut config = state.config.lock().unwrap();
+        config.amp_openai_providers = merged_providers.iter().map(|p| {
+            crate::types::amp::AmpOpenAIProvider {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: p.name.clone(),
+                base_url: p.base_url.clone(),
+                api_key: p.api_key_entries.first().map(|e| e.api_key.clone()).unwrap_or_default(),
+                models: p.models.as_ref().map(|m| {
+                    m.iter().map(|model| crate::types::amp::AmpOpenAIModel {
+                        name: model.name.clone(),
+                        alias: model.alias.clone().unwrap_or_default(),
+                    }).collect()
+                }).unwrap_or_default(),
+                headers: p.headers.clone(),
+                api_type: p.api_type.clone(),
+            }
+        }).collect();
+    }
+    let config_to_save = state.config.lock().unwrap().clone();
+    save_config_to_file(&config_to_save)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_ollama_provider(state: State<'_, AppState>, provider: OpenAICompatibleProvider) -> Result<(), String> {
+    let mut providers = get_ollama_providers(state.clone()).await?;
+    providers.push(provider);
+    set_ollama_providers(state, providers).await
+}
+
+#[tauri::command]
+pub async fn delete_ollama_provider(state: State<'_, AppState>, index: usize) -> Result<(), String> {
+    let mut providers = get_ollama_providers(state.clone()).await?;
+    if index >= providers.len() {
+        return Err("Index out of bounds".to_string());
+    }
+    providers.remove(index);
+    set_ollama_providers(state, providers).await
 }

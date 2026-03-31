@@ -1,6 +1,7 @@
 use crate::config::save_config_to_file;
 use crate::state::AppState;
 use crate::types::{AvailableModel, ProviderTestResult};
+use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
 use tauri::State;
 
@@ -14,6 +15,188 @@ struct ModelsApiResponse {
 struct ModelsApiModel {
     id: String,
     owned_by: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagsResponse {
+    models: Vec<OllamaTagModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTagModel {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIErrorResponse {
+    error: Option<OpenAIErrorBody>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIErrorBody {
+    message: Option<String>,
+    r#type: Option<String>,
+    code: Option<serde_json::Value>,
+}
+
+fn truncate_message(message: &str, max_chars: usize) -> String {
+    let trimmed = message.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let truncated: String = trimmed.chars().take(max_chars).collect();
+    format!("{}…", truncated.trim_end())
+}
+
+fn format_openai_error(status: StatusCode, body: &str) -> String {
+    let parsed = serde_json::from_str::<OpenAIErrorResponse>(body)
+        .ok()
+        .and_then(|json| json.error);
+
+    if let Some(error) = parsed {
+        let message = error
+            .message
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| truncate_message(&value, 220));
+        let error_type = error.r#type.filter(|value| !value.trim().is_empty());
+        let error_code = error
+            .code
+            .and_then(|value| match value {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(text) => Some(text),
+                other => Some(other.to_string()),
+            })
+            .filter(|value| !value.trim().is_empty());
+
+        let mut details = Vec::new();
+        if let Some(error_type) = error_type {
+            details.push(format!("type {}", error_type));
+        }
+        if let Some(error_code) = error_code {
+            details.push(format!("code {}", error_code));
+        }
+
+        if let Some(message) = message {
+            if details.is_empty() {
+                return format!("Request failed ({}): {}", status, message);
+            }
+            return format!("Request failed ({}): {} [{}]", status, message, details.join(", "));
+        }
+    }
+
+    let compact_body = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact_body.is_empty() {
+        return format!("Request failed ({})", status);
+    }
+
+    format!(
+        "Request failed ({}): {}",
+        status,
+        truncate_message(&compact_body, 220)
+    )
+}
+
+fn is_completion_fallback_candidate(status: StatusCode, body: &str) -> bool {
+    if !(status == StatusCode::BAD_REQUEST
+        || status == StatusCode::NOT_FOUND
+        || status == StatusCode::METHOD_NOT_ALLOWED
+        || status == StatusCode::UNPROCESSABLE_ENTITY)
+    {
+        return false;
+    }
+
+    let normalized = body.to_ascii_lowercase();
+    [
+        "chat/completions",
+        "completions endpoint",
+        "messages",
+        "prompt",
+        "unsupported endpoint",
+        "unsupported path",
+        "not found",
+        "ollama",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
+fn normalize_base_url(base_url: &str) -> (&str, &str) {
+    let base_url = base_url.trim_end_matches('/');
+    let root_url = base_url.strip_suffix("/v1").unwrap_or(base_url);
+    (base_url, root_url)
+}
+
+fn build_openai_model_endpoints(base_url: &str) -> Vec<String> {
+    let (base_url, root_url) = normalize_base_url(base_url);
+
+    let mut endpoints = vec![format!("{}/models", base_url)];
+    if root_url == base_url {
+        endpoints.push(format!("{}/v1/models", base_url));
+    } else {
+        endpoints.push(format!("{}/models", root_url));
+    }
+
+    endpoints
+}
+
+fn build_ollama_tags_endpoints(base_url: &str) -> Vec<String> {
+    let (base_url, root_url) = normalize_base_url(base_url);
+
+    let mut endpoints = vec![format!("{}/api/tags", base_url)];
+    if root_url != base_url {
+        endpoints.push(format!("{}/api/tags", root_url));
+    }
+
+    endpoints
+}
+
+fn parse_openai_models_count(json: &serde_json::Value) -> Option<u32> {
+    json.get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| arr.len() as u32)
+}
+
+fn parse_openai_models(json: &serde_json::Value) -> Vec<crate::types::OpenAICompatibleModel> {
+    json.get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let id = m.get("id")?.as_str()?.to_string();
+                    Some(crate::types::OpenAICompatibleModel {
+                        id,
+                        owned_by: m.get("owned_by").and_then(|v| v.as_str()).map(String::from),
+                        created: m.get("created").and_then(|v| v.as_i64()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn send_test_request(
+    client: &Client,
+    endpoint: &str,
+    api_key: &str,
+    payload: serde_json::Value,
+) -> Result<Response, reqwest::Error> {
+    client
+        .post(endpoint)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&payload)
+        .send()
+        .await
+}
+
+fn format_transport_error(error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        "Connection timed out while testing the model".to_string()
+    } else if error.is_connect() {
+        "Could not connect to the local proxy while testing the model".to_string()
+    } else {
+        format!("Connection failed: {}", error)
+    }
 }
 
 fn is_copilot_model_id(model_id: &str) -> bool {
@@ -85,12 +268,6 @@ pub async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<Avai
     {
         Ok(resp) => resp,
         Err(e) => {
-            // Connection error - proxy might have crashed
-            // Update state to reflect proxy is not running
-            {
-                let mut status = state.proxy_status.lock().unwrap();
-                status.running = false;
-            }
             return Err(format!("Proxy not responding. Please restart the proxy. ({})", e));
         }
     };
@@ -146,6 +323,7 @@ pub async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<Avai
                             "oauth".to_string()
                         }
                     }
+                    "ollama" => "ollama".to_string(),
                     owner => owner.to_string(),
                 }
             };
@@ -177,9 +355,9 @@ pub async fn test_provider_connection(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let endpoint = format!("http://localhost:{}/v1/chat/completions", port);
-    
-    let payload = serde_json::json!({
+    let chat_endpoint = format!("http://localhost:{}/v1/chat/completions", port);
+    let completions_endpoint = format!("http://localhost:{}/v1/completions", port);
+    let chat_payload = serde_json::json!({
         "model": model_id,
         "messages": [
             {
@@ -189,96 +367,118 @@ pub async fn test_provider_connection(
         ],
         "max_tokens": 5
     });
+    let completions_payload = serde_json::json!({
+        "model": model_id,
+        "prompt": "Say 'OK'",
+        "max_tokens": 5
+    });
 
     let start = std::time::Instant::now();
-    let response = client.post(&endpoint)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&payload)
-        .send()
-        .await;
-    
-    let latency = start.elapsed().as_millis() as u64;
+    let response = send_test_request(&client, &chat_endpoint, &api_key, chat_payload).await;
 
-    match response {
+    let final_result = match response {
+        Ok(resp) if resp.status().is_success() => ProviderTestResult {
+            success: true,
+            message: "Connection successful!".to_string(),
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+            models_found: None,
+        },
         Ok(resp) => {
             let status = resp.status();
-            if status.is_success() {
-                Ok(ProviderTestResult {
-                    success: true,
-                    message: "Connection successful!".to_string(),
-                    latency_ms: Some(latency),
-                    models_found: None,
-                })
+            let error_text = resp.text().await.unwrap_or_default();
+
+            if is_completion_fallback_candidate(status, &error_text) {
+                match send_test_request(&client, &completions_endpoint, &api_key, completions_payload).await {
+                    Ok(fallback_resp) if fallback_resp.status().is_success() => ProviderTestResult {
+                        success: true,
+                        message: "Connection successful via completions fallback.".to_string(),
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        models_found: None,
+                    },
+                    Ok(fallback_resp) => {
+                        let fallback_status = fallback_resp.status();
+                        let fallback_text = fallback_resp.text().await.unwrap_or_default();
+                        ProviderTestResult {
+                            success: false,
+                            message: format_openai_error(fallback_status, &fallback_text),
+                            latency_ms: Some(start.elapsed().as_millis() as u64),
+                            models_found: None,
+                        }
+                    }
+                    Err(error) => ProviderTestResult {
+                        success: false,
+                        message: format_transport_error(&error),
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        models_found: None,
+                    },
+                }
             } else {
-                let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                Ok(ProviderTestResult {
+                ProviderTestResult {
                     success: false,
-                    message: format!("Error {}: {}", status, error_text),
-                    latency_ms: Some(latency),
+                    message: format_openai_error(status, &error_text),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
                     models_found: None,
-                })
+                }
             }
         }
-        Err(e) => {
-            Ok(ProviderTestResult {
-                success: false,
-                message: format!("Connection failed: {}", e),
-                latency_ms: Some(latency),
-                models_found: None,
-            })
-        }
-    }
+        Err(error) => ProviderTestResult {
+            success: false,
+            message: format_transport_error(&error),
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+            models_found: None,
+        },
+    };
+
+    Ok(final_result)
 }
 
 #[tauri::command]
-pub async fn test_openai_provider(base_url: String, api_key: String) -> Result<ProviderTestResult, String> {
-    if base_url.is_empty() || api_key.is_empty() {
+pub async fn test_openai_provider(
+    base_url: String,
+    api_key: String,
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Result<ProviderTestResult, String> {
+    if base_url.is_empty() {
         return Ok(ProviderTestResult {
             success: false,
-            message: "Base URL and API key are required".to_string(),
+            message: "Base URL is required".to_string(),
             latency_ms: None,
             models_found: None,
         });
     }
-    
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
-    
-    // Normalize base URL - remove trailing slash
-    let base_url = base_url.trim_end_matches('/');
-    
-    // Try multiple endpoint patterns since providers have varying API structures:
-    // 1. {baseUrl}/models - for providers where user specifies full path (e.g., .../v1 or .../v4)
-    // 2. {baseUrl}/v1/models - for providers where user specifies root URL
-    let endpoints = vec![
-        format!("{}/models", base_url),
-        format!("{}/v1/models", base_url),
-    ];
-    
+
+    let endpoints = build_openai_model_endpoints(&base_url);
+
     let start = std::time::Instant::now();
-    
+
     for endpoint in &endpoints {
-        let response = client.get(endpoint)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .send()
-            .await;
+        let mut request = client.get(endpoint);
+        if !api_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+        if let Some(headers) = &headers {
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+        }
+        let response = request.send().await;
         let latency = start.elapsed().as_millis() as u64;
-        
+
         match response {
             Ok(resp) => {
                 let status = resp.status();
                 if status.is_success() {
-                    // Try to count models
                     let models_count = if let Ok(json) = resp.json::<serde_json::Value>().await {
-                        json.get("data")
-                            .and_then(|d| d.as_array())
-                            .map(|arr| arr.len() as u32)
+                        parse_openai_models_count(&json)
                     } else {
                         None
                     };
-                    
+
                     return Ok(ProviderTestResult {
                         success: true,
                         message: format!("Connection successful! ({}ms)", latency),
@@ -288,7 +488,7 @@ pub async fn test_openai_provider(base_url: String, api_key: String) -> Result<P
                 } else if status.as_u16() == 401 || status.as_u16() == 403 {
                     return Ok(ProviderTestResult {
                         success: false,
-                        message: "Authentication failed - check your API key".to_string(),
+                        message: "Authentication failed - check your API key or headers".to_string(),
                         latency_ms: Some(latency),
                         models_found: None,
                     });
@@ -315,7 +515,7 @@ pub async fn test_openai_provider(base_url: String, api_key: String) -> Result<P
             }
         }
     }
-    
+
     // All endpoints failed with 404 or similar
     let latency = start.elapsed().as_millis() as u64;
     Ok(ProviderTestResult {
@@ -326,11 +526,158 @@ pub async fn test_openai_provider(base_url: String, api_key: String) -> Result<P
     })
 }
 
+#[tauri::command]
+pub async fn test_ollama_provider(
+    base_url: String,
+    api_key: String,
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Result<ProviderTestResult, String> {
+    if base_url.is_empty() {
+        return Ok(ProviderTestResult {
+            success: false,
+            message: "Base URL is required".to_string(),
+            latency_ms: None,
+            models_found: None,
+        });
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let start = std::time::Instant::now();
+
+    for endpoint in build_ollama_tags_endpoints(&base_url) {
+        let mut request = client.get(&endpoint);
+        if !api_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+        if let Some(headers) = &headers {
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+        }
+
+        match request.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let latency = start.elapsed().as_millis() as u64;
+                let models_count = resp
+                    .json::<OllamaTagsResponse>()
+                    .await
+                    .ok()
+                    .map(|json| json.models.len() as u32);
+                return Ok(ProviderTestResult {
+                    success: true,
+                    message: format!("Connection successful! ({}ms)", latency),
+                    latency_ms: Some(latency),
+                    models_found: models_count,
+                });
+            }
+            Ok(resp) if resp.status().as_u16() == 401 || resp.status().as_u16() == 403 => {
+                let latency = start.elapsed().as_millis() as u64;
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Authentication failed - check your API key or headers".to_string(),
+                    latency_ms: Some(latency),
+                    models_found: None,
+                });
+            }
+            Err(e) if e.is_timeout() => {
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Connection timed out - check your base URL".to_string(),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    models_found: None,
+                });
+            }
+            Err(e) if e.is_connect() => {
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Could not connect - check your base URL".to_string(),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    models_found: None,
+                });
+            }
+            _ => continue,
+        }
+    }
+
+    for endpoint in build_openai_model_endpoints(&base_url) {
+        let mut request = client.get(&endpoint);
+        if !api_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+        if let Some(headers) = &headers {
+            for (key, value) in headers {
+                request = request.header(key, value);
+            }
+        }
+
+        match request.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let latency = start.elapsed().as_millis() as u64;
+                let models_count = resp
+                    .json::<serde_json::Value>()
+                    .await
+                    .ok()
+                    .and_then(|json| parse_openai_models_count(&json));
+                return Ok(ProviderTestResult {
+                    success: true,
+                    message: format!("Connection successful! ({}ms)", latency),
+                    latency_ms: Some(latency),
+                    models_found: models_count,
+                });
+            }
+            Ok(resp) if resp.status().as_u16() == 401 || resp.status().as_u16() == 403 => {
+                let latency = start.elapsed().as_millis() as u64;
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Authentication failed - check your API key or headers".to_string(),
+                    latency_ms: Some(latency),
+                    models_found: None,
+                });
+            }
+            Err(e) if e.is_timeout() => {
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Connection timed out - check your base URL".to_string(),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    models_found: None,
+                });
+            }
+            Err(e) if e.is_connect() => {
+                return Ok(ProviderTestResult {
+                    success: false,
+                    message: "Could not connect - check your base URL".to_string(),
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    models_found: None,
+                });
+            }
+            _ => continue,
+        }
+    }
+
+    let latency = start.elapsed().as_millis() as u64;
+    Ok(ProviderTestResult {
+        success: false,
+        message: "Provider returned 404 Not Found - check your base URL (tried /api/tags, /models, and /v1/models)".to_string(),
+        latency_ms: Some(latency),
+        models_found: None,
+    })
+}
+
 // Fetch models from all configured OpenAI-compatible providers
 #[tauri::command]
-pub async fn fetch_openai_compatible_models(state: State<'_, AppState>) -> Result<Vec<crate::types::OpenAICompatibleProviderModels>, String> {
-    // Get all configured OpenAI-compatible providers
-    let providers = crate::commands::api_keys::get_openai_compatible_providers(state.clone()).await?;
+pub async fn fetch_openai_compatible_models(
+    state: State<'_, AppState>,
+    providers: Option<Vec<crate::types::OpenAICompatibleProvider>>,
+) -> Result<Vec<crate::types::OpenAICompatibleProviderModels>, String> {
+    // Get all configured OpenAI-compatible providers unless a specific list was provided
+    let providers = match providers {
+        Some(providers) => providers,
+        None => crate::commands::api_keys::get_openai_compatible_providers(state.clone()).await?,
+    };
     
     if providers.is_empty() {
         return Ok(Vec::new());
@@ -340,42 +687,55 @@ pub async fn fetch_openai_compatible_models(state: State<'_, AppState>) -> Resul
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
-    
+
     let mut results = Vec::new();
-    
+
     for provider in providers {
         let base_url = provider.base_url.trim_end_matches('/');
         let api_key = provider.api_key_entries.first()
             .map(|e| e.api_key.clone())
             .unwrap_or_default();
-        
-        if api_key.is_empty() {
-            results.push(crate::types::OpenAICompatibleProviderModels {
-                provider_name: provider.name.clone(),
-                base_url: provider.base_url.clone(),
-                models: Vec::new(),
-                error: Some("No API key configured".to_string()),
-            });
-            continue;
-        }
-        
-        // Try multiple endpoint patterns
-        let endpoints = vec![
-            format!("{}/models", base_url),
-            format!("{}/v1/models", base_url),
-        ];
-        
+        let headers = provider.headers.clone().unwrap_or_default();
+
+        // Try OpenAI-compatible endpoint patterns only
+        let endpoints = vec![(format!("{}/models", base_url), false), (format!("{}/v1/models", base_url), false)];
+
         let mut found_models = false;
-        
-        for endpoint in &endpoints {
-            let response = client.get(endpoint)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .send()
-                .await;
-            
+
+        for (endpoint, is_ollama_tags) in &endpoints {
+            let mut request = client.get(endpoint);
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            for (key, value) in &headers {
+                request = request.header(key, value);
+            }
+            let response = request.send().await;
+
             match response {
                 Ok(resp) if resp.status().is_success() => {
-                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if *is_ollama_tags {
+                        if let Ok(json) = resp.json::<OllamaTagsResponse>().await {
+                            let models = json
+                                .models
+                                .into_iter()
+                                .map(|m| crate::types::OpenAICompatibleModel {
+                                    id: m.name,
+                                    owned_by: Some("ollama".to_string()),
+                                    created: None,
+                                })
+                                .collect();
+
+                            results.push(crate::types::OpenAICompatibleProviderModels {
+                                provider_name: provider.name.clone(),
+                                base_url: provider.base_url.clone(),
+                                models,
+                                error: None,
+                            });
+                            found_models = true;
+                            break;
+                        }
+                    } else if let Ok(json) = resp.json::<serde_json::Value>().await {
                         let models: Vec<crate::types::OpenAICompatibleModel> = json
                             .get("data")
                             .and_then(|d| d.as_array())
@@ -392,7 +752,7 @@ pub async fn fetch_openai_compatible_models(state: State<'_, AppState>) -> Resul
                                     .collect()
                             })
                             .unwrap_or_default();
-                        
+
                         results.push(crate::types::OpenAICompatibleProviderModels {
                             provider_name: provider.name.clone(),
                             base_url: provider.base_url.clone(),
@@ -416,7 +776,7 @@ pub async fn fetch_openai_compatible_models(state: State<'_, AppState>) -> Resul
                 _ => continue, // Try next endpoint
             }
         }
-        
+
         if !found_models {
             results.push(crate::types::OpenAICompatibleProviderModels {
                 provider_name: provider.name.clone(),
@@ -426,8 +786,184 @@ pub async fn fetch_openai_compatible_models(state: State<'_, AppState>) -> Resul
             });
         }
     }
-    
+
     Ok(results)
+}
+
+#[tauri::command]
+pub async fn fetch_ollama_models(
+    state: State<'_, AppState>,
+    providers: Option<Vec<crate::types::OpenAICompatibleProvider>>,
+) -> Result<Vec<crate::types::OpenAICompatibleProviderModels>, String> {
+    let providers = match providers {
+        Some(providers) => providers,
+        None => crate::commands::api_keys::get_ollama_providers(state.clone()).await?,
+    };
+
+    if providers.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+
+    for provider in providers {
+        let api_key = provider.api_key_entries.first()
+            .map(|e| e.api_key.clone())
+            .unwrap_or_default();
+        let headers = provider.headers.clone().unwrap_or_default();
+        let mut found_models = false;
+
+        for endpoint in build_ollama_tags_endpoints(&provider.base_url) {
+            let mut request = client.get(&endpoint);
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            for (key, value) in &headers {
+                request = request.header(key, value);
+            }
+
+            match request.send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(json) = resp.json::<OllamaTagsResponse>().await {
+                        let models = json.models.into_iter().map(|m| crate::types::OpenAICompatibleModel {
+                            id: m.name,
+                            owned_by: Some("ollama".to_string()),
+                            created: None,
+                        }).collect();
+                        results.push(crate::types::OpenAICompatibleProviderModels {
+                            provider_name: provider.name.clone(),
+                            base_url: provider.base_url.clone(),
+                            models,
+                            error: None,
+                        });
+                        found_models = true;
+                        break;
+                    }
+                }
+                Ok(resp) if resp.status().as_u16() == 401 || resp.status().as_u16() == 403 => {
+                    results.push(crate::types::OpenAICompatibleProviderModels {
+                        provider_name: provider.name.clone(),
+                        base_url: provider.base_url.clone(),
+                        models: Vec::new(),
+                        error: Some("Authentication failed".to_string()),
+                    });
+                    found_models = true;
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        if found_models {
+            continue;
+        }
+
+        for endpoint in build_openai_model_endpoints(&provider.base_url) {
+            let mut request = client.get(&endpoint);
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            for (key, value) in &headers {
+                request = request.header(key, value);
+            }
+
+            match request.send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        results.push(crate::types::OpenAICompatibleProviderModels {
+                            provider_name: provider.name.clone(),
+                            base_url: provider.base_url.clone(),
+                            models: parse_openai_models(&json),
+                            error: None,
+                        });
+                        found_models = true;
+                        break;
+                    }
+                }
+                Ok(resp) if resp.status().as_u16() == 401 || resp.status().as_u16() == 403 => {
+                    results.push(crate::types::OpenAICompatibleProviderModels {
+                        provider_name: provider.name.clone(),
+                        base_url: provider.base_url.clone(),
+                        models: Vec::new(),
+                        error: Some("Authentication failed".to_string()),
+                    });
+                    found_models = true;
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        if !found_models {
+            results.push(crate::types::OpenAICompatibleProviderModels {
+                provider_name: provider.name.clone(),
+                base_url: provider.base_url.clone(),
+                models: Vec::new(),
+                error: Some("Could not fetch models - endpoint not found".to_string()),
+            });
+        }
+    }
+
+    Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_ollama_tags_endpoints;
+
+    #[test]
+    fn build_ollama_tags_endpoints_uses_api_tags_for_plain_base_url() {
+        assert_eq!(
+            build_ollama_tags_endpoints("http://127.0.0.1:11434"),
+            vec!["http://127.0.0.1:11434/api/tags".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_ollama_tags_endpoints_maps_v1_base_url_to_root_api_tags() {
+        assert_eq!(
+            build_ollama_tags_endpoints("http://127.0.0.1:8317/v1"),
+            vec![
+                "http://127.0.0.1:8317/v1/api/tags".to_string(),
+                "http://127.0.0.1:8317/api/tags".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn build_ollama_tags_endpoints_trims_trailing_slash() {
+        assert_eq!(
+            build_ollama_tags_endpoints("http://127.0.0.1:11434/"),
+            vec!["http://127.0.0.1:11434/api/tags".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_openai_model_endpoints_uses_v1_for_root_shared_endpoint() {
+        assert_eq!(
+            super::build_openai_model_endpoints("http://127.0.0.1:8317"),
+            vec![
+                "http://127.0.0.1:8317/models".to_string(),
+                "http://127.0.0.1:8317/v1/models".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn build_openai_model_endpoints_uses_root_models_for_v1_shared_endpoint() {
+        assert_eq!(
+            super::build_openai_model_endpoints("http://127.0.0.1:8317/v1"),
+            vec![
+                "http://127.0.0.1:8317/v1/models".to_string(),
+                "http://127.0.0.1:8317/models".to_string()
+            ]
+        );
+    }
 }
 
 // Get model context and output limits

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +34,10 @@ pub struct AmpOpenAIProvider {
     pub api_key: String,
     #[serde(default)]
     pub models: Vec<AmpOpenAIModel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_type: Option<String>,
 }
 
 pub(crate) fn generate_uuid() -> String {

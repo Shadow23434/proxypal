@@ -209,13 +209,27 @@ fn build_openai_compat_section(config: &AppConfig) -> String {
 
     // Custom providers
     for provider in &config.amp_openai_providers {
-        if !provider.name.is_empty() && !provider.base_url.is_empty() && !provider.api_key.is_empty() {
+        if !provider.name.is_empty() && !provider.base_url.is_empty() && (!provider.api_key.is_empty() || provider.headers.as_ref().is_some_and(|h| !h.is_empty())) {
             let mut entry = format!("  # Custom OpenAI-compatible provider: {}\n", provider.name);
             entry.push_str(&format!("  - name: \"{}\"\n", provider.name));
             entry.push_str(&format!("    base-url: \"{}\"\n", provider.base_url));
             entry.push_str("    schema-cleaner: true\n");
+            if let Some(api_type) = &provider.api_type {
+                if !api_type.is_empty() {
+                    entry.push_str(&format!("    api-type: \"{}\"\n", api_type));
+                }
+            }
             entry.push_str("    api-key-entries:\n");
             entry.push_str(&format!("      - api-key: \"{}\"\n", provider.api_key));
+
+            if let Some(headers) = &provider.headers {
+                if !headers.is_empty() {
+                    entry.push_str("    headers:\n");
+                    for (key, value) in headers {
+                        entry.push_str(&format!("      {}: \"{}\"\n", key, value));
+                    }
+                }
+            }
 
             if !provider.models.is_empty() {
                 entry.push_str("    models:\n");
@@ -582,14 +596,28 @@ pub async fn start_proxy(
 
     // Spawn the sidecar process with WRITABLE_PATH set to app config dir
     // This prevents CLIProxyAPI from writing logs to src-tauri/logs/ which triggers hot reload
-    let sidecar = app
-        .shell()
-        .sidecar("cli-proxy-api")
-        .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+    let dev_sidecar_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join(if cfg!(target_arch = "aarch64") {
+            "cli-proxy-api-aarch64-pc-windows-msvc.exe"
+        } else {
+            "cli-proxy-api-x86_64-pc-windows-msvc.exe"
+        });
+
+    let command = if cfg!(debug_assertions) {
+        app
+            .shell()
+            .command(dev_sidecar_path.to_string_lossy().as_ref())
+    } else {
+        app
+            .shell()
+            .sidecar("cli-proxy-api")
+            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+    }
         .env("WRITABLE_PATH", config_dir.to_str().unwrap())
         .args(["--config", proxy_config_path.to_str().unwrap()]);
 
-    let (mut rx, child) = sidecar.spawn().map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+    let (mut rx, child) = command.spawn().map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
     // Store the child process
     {

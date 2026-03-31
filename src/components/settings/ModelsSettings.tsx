@@ -35,17 +35,45 @@ export function ModelsSettings(props: ModelsSettingsProps) {
   const [agents, setAgents] = createSignal<AgentStatus[]>([]);
   const [configuringAgent, setConfiguringAgent] = createSignal<string | null>(null);
   const [modelStatuses, setModelStatuses] = createSignal<Record<string, ModelStatusInfo>>({});
+  const [modelsLoading, setModelsLoading] = createSignal(false);
+  let refreshModelsPromise: Promise<void> | null = null;
 
-  onMount(async () => {
-    // Load models if proxy is running
-    if (appStore.proxyStatus().running) {
+  const refreshModels = async () => {
+    if (!appStore.proxyStatus().running) {
+      setModelsLoading(false);
+      return;
+    }
+    if (refreshModelsPromise) {
+      return refreshModelsPromise;
+    }
+
+    setModelsLoading(true);
+    refreshModelsPromise = (async () => {
       try {
         const availableModels = await getAvailableModels();
         setModels(availableModels);
+        setModelStatuses((prev) => {
+          const next: Record<string, ModelStatusInfo> = {};
+          for (const model of availableModels) {
+            if (prev[model.id]) {
+              next[model.id] = prev[model.id];
+            }
+          }
+          return next;
+        });
       } catch (error) {
         console.error("Failed to load models:", error);
+      } finally {
+        setModelsLoading(false);
+        refreshModelsPromise = null;
       }
-    }
+    })();
+
+    return refreshModelsPromise;
+  };
+
+  onMount(async () => {
+    await refreshModels();
 
     // Load agents
     try {
@@ -58,7 +86,7 @@ export function ModelsSettings(props: ModelsSettingsProps) {
 
   const testModel = async (modelId: string) => {
     const currentStatus = modelStatuses()[modelId]?.status;
-    if (currentStatus && currentStatus !== "untested") {
+    if (currentStatus === "testing") {
       return;
     }
 
@@ -90,6 +118,8 @@ export function ModelsSettings(props: ModelsSettingsProps) {
           testedAt: Date.now(),
         },
       }));
+    } finally {
+      await refreshModels();
     }
   };
 
@@ -131,7 +161,7 @@ export function ModelsSettings(props: ModelsSettingsProps) {
           Available Models
         </h2>
         <ModelsWidget
-          loading={!appStore.proxyStatus().running}
+          loading={modelsLoading()}
           modelStatuses={modelStatuses()}
           models={models()}
           onTestModel={testModel}

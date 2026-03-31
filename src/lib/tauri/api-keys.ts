@@ -49,6 +49,18 @@ export interface OpenAICompatibleProvider {
   prefix?: string;
 }
 
+export interface OllamaProvider {
+  apiKeyEntries: Array<{
+    apiKey: string;
+    proxyUrl?: string;
+  }>;
+  baseUrl: string;
+  headers?: Record<string, string>;
+  models?: ModelMapping[];
+  name: string;
+  prefix?: string;
+}
+
 // API Keys response wrapper
 export interface ApiKeysResponse<T> {
   keys: T[];
@@ -149,4 +161,20 @@ export async function addOpenAICompatibleProvider(
 
 export async function deleteOpenAICompatibleProvider(index: number): Promise<void> {
   return invoke("delete_openai_compatible_provider", { index });
+}
+
+export async function getOllamaProviders(): Promise<OllamaProvider[]> {
+  return invoke("get_ollama_providers");
+}
+
+export async function setOllamaProviders(providers: OllamaProvider[]): Promise<void> {
+  return invoke("set_ollama_providers", { providers });
+}
+
+export async function addOllamaProvider(provider: OllamaProvider): Promise<void> {
+  return invoke("add_ollama_provider", { provider });
+}
+
+export async function deleteOllamaProvider(index: number): Promise<void> {
+  return invoke("delete_ollama_provider", { index });
 }

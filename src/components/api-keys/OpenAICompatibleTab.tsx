@@ -31,7 +31,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
   const [newModelInput, setNewModelInput] = createSignal("");
   const [newOpenaiProvider, setNewOpenaiProvider] = createSignal<OpenAICompatibleProvider>({
     apiKeyEntries: [{ apiKey: "" }],
-    baseUrl: "",
+        baseUrl: "",
     models: [],
     name: "",
   });
@@ -45,6 +45,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
   const [fetchingModels, setFetchingModels] = createSignal(false);
   const [bulkAddMode, setBulkAddMode] = createSignal(false);
   const [bulkKeysInput, setBulkKeysInput] = createSignal("");
+  const [headersInput, setHeadersInput] = createSignal("");
 
   const loadKeys = async () => {
     if (!proxyStatus().running) {
@@ -69,31 +70,54 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
     }
   });
 
+  const enrichProviderModels = async (provider: OpenAICompatibleProvider) => {
+    const providerModels = await fetchOpenaiCompatibleModels([provider]).catch(() => []);
+    const matched = providerModels.find((item) => item.providerName === provider.name);
+
+    if (!matched || matched.error || matched.models.length === 0) {
+      return provider;
+    }
+
+    return {
+      ...provider,
+      models: matched.models.map((model) => ({ alias: model.id, name: model.id })),
+    };
+  };
+
   const handleAddOpenaiProvider = async () => {
     const provider = newOpenaiProvider();
-    if (!provider.name.trim() || !provider.baseUrl.trim()) {
+    const headers = parseHeaders(headersInput());
+    const nextProvider = {
+      ...provider,
+      headers,
+    };
+
+    if (!nextProvider.name.trim() || !nextProvider.baseUrl.trim()) {
       toastStore.error(t("apiKeys.toasts.nameAndBaseUrlRequired"));
       return;
     }
-    if (!provider.apiKeyEntries[0]?.apiKey.trim()) {
-      toastStore.error(t("apiKeys.toasts.atLeastOneApiKeyRequired"));
+    if (!nextProvider.apiKeyEntries[0]?.apiKey.trim() && !nextProvider.headers) {
+      toastStore.error(t("apiKeys.toasts.atLeastOneApiKeyOrHeaderRequired"));
       return;
     }
 
     local.setLoading(true);
     try {
-      const updated = [...openaiProviders(), provider];
+      const providerWithModels = await enrichProviderModels(nextProvider);
+      const updated = [...openaiProviders(), providerWithModels];
       await setOpenAICompatibleProviders(updated);
       setOpenaiProviders(updated);
       setNewOpenaiProvider({
         apiKeyEntries: [{ apiKey: "" }],
-        baseUrl: "",
+                baseUrl: "",
         name: "",
       });
       local.setShowAddForm(false);
       setBulkAddMode(false);
       setBulkKeysInput("");
+      setHeadersInput("");
       toastStore.success(t("apiKeys.toasts.openAiCompatibleProviderAdded"));
+      await reloadConfig();
     } catch (error) {
       toastStore.error(t("apiKeys.toasts.failedToAddProvider"), String(error));
     } finally {
@@ -122,6 +146,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
       ...provider,
       apiKeyEntries: [...provider.apiKeyEntries],
     });
+    setHeadersInput(formatHeaders(provider.headers));
     if (provider.apiKeyEntries.length > 1) {
       setBulkAddMode(true);
       setBulkKeysInput(
@@ -139,12 +164,18 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
 
   const handleUpdateProvider = async () => {
     const provider = newOpenaiProvider();
-    if (!provider.name.trim() || !provider.baseUrl.trim()) {
+    const headers = parseHeaders(headersInput());
+    const nextProvider = {
+      ...provider,
+      headers,
+    };
+
+    if (!nextProvider.name.trim() || !nextProvider.baseUrl.trim()) {
       toastStore.error(t("apiKeys.toasts.nameAndBaseUrlRequired"));
       return;
     }
-    if (!provider.apiKeyEntries[0]?.apiKey.trim()) {
-      toastStore.error(t("apiKeys.toasts.atLeastOneApiKeyRequired"));
+    if (!nextProvider.apiKeyEntries[0]?.apiKey.trim() && !nextProvider.headers) {
+      toastStore.error(t("apiKeys.toasts.atLeastOneApiKeyOrHeaderRequired"));
       return;
     }
 
@@ -155,12 +186,13 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
         return;
       }
 
-      const updated = openaiProviders().map((p, i) => (i === index ? provider : p));
+      const providerWithModels = await enrichProviderModels(nextProvider);
+      const updated = openaiProviders().map((p, i) => (i === index ? providerWithModels : p));
       await setOpenAICompatibleProviders(updated);
       setOpenaiProviders(updated);
       setNewOpenaiProvider({
         apiKeyEntries: [{ apiKey: "" }],
-        baseUrl: "",
+                baseUrl: "",
         models: [],
         name: "",
       });
@@ -168,7 +200,9 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
       local.setShowAddForm(false);
       setBulkAddMode(false);
       setBulkKeysInput("");
+      setHeadersInput("");
       toastStore.success(t("apiKeys.toasts.providerUpdated"));
+      await reloadConfig();
     } catch (error) {
       toastStore.error(t("apiKeys.toasts.failedToUpdateProvider"), String(error));
     } finally {
@@ -180,13 +214,49 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
     setEditingIndex(null);
     setNewOpenaiProvider({
       apiKeyEntries: [{ apiKey: "" }],
-      baseUrl: "",
+            baseUrl: "",
       models: [],
       name: "",
     });
     local.setShowAddForm(false);
     setBulkAddMode(false);
     setBulkKeysInput("");
+    setHeadersInput("");
+  };
+
+  const formatHeaders = (headers?: Record<string, string>) => {
+    if (!headers) {
+      return "";
+    }
+    return Object.entries(headers)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("\n");
+  };
+
+  const parseHeaders = (raw: string): Record<string, string> | undefined => {
+    const entries = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex === -1) {
+          return null;
+        }
+        const key = line.slice(0, separatorIndex).trim();
+        const value = line.slice(separatorIndex + 1).trim();
+        if (!key || !value) {
+          return null;
+        }
+        return [key, value] as const;
+      })
+      .filter((entry): entry is [string, string] => entry !== null);
+
+    if (entries.length === 0) {
+      return undefined;
+    }
+
+    return Object.fromEntries(entries);
   };
 
   const handleOpenModelManager = (index: number) => {
@@ -214,7 +284,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
         if (!alreadyExists) {
           return {
             ...p,
-            models: [...existingModels, { name: model }],
+            models: [...existingModels, { alias: model, name: model }],
           };
         }
       }
@@ -323,7 +393,10 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
         if (i === index) {
           return {
             ...p,
-            models: [...(p.models || []), ...newModels.map((model) => ({ name: model.id }))],
+            models: [
+              ...(p.models || []),
+              ...newModels.map((model) => ({ alias: model.id, name: model.id })),
+            ],
           };
         }
         return p;
@@ -345,7 +418,12 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
     }
   };
 
-  const handleTestProvider = async (baseUrl: string, apiKey: string, index?: number) => {
+  const handleTestProvider = async (
+    baseUrl: string,
+    apiKey: string,
+    headers?: Record<string, string>,
+    index?: number,
+  ) => {
     if (index !== undefined) {
       setTestingIndex(index);
     } else {
@@ -354,7 +432,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
     setTestResult(null);
 
     try {
-      const result = await testOpenAIProvider(baseUrl, apiKey);
+      const result = await testOpenAIProvider(baseUrl, apiKey, headers);
       setTestResult({
         message: result.message,
         modelsFound: result.modelsFound ?? undefined,
@@ -415,6 +493,13 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
                       {t("apiKeys.apiKeysCount", {
                         count: provider.apiKeyEntries.length,
                       })}
+                      {provider.headers && (
+                        <span class="ml-2 text-gray-400 dark:text-gray-500">
+                          {t("apiKeys.headersCount", {
+                            count: Object.keys(provider.headers).length,
+                          })}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div class="flex items-center gap-1">
@@ -424,6 +509,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
                         handleTestProvider(
                           provider.baseUrl,
                           provider.apiKeyEntries[0]?.apiKey || "",
+                          provider.headers,
                           index(),
                         )
                       }
@@ -577,7 +663,7 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
           <div class="space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t("apiKeys.labels.apiKeysRequired")}
+                {t("apiKeys.labels.apiKeysOptional")}
               </span>
               <button
                 class="text-xs text-brand-600 hover:underline dark:text-brand-400"
@@ -639,6 +725,18 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
           </div>
           <label class="block">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t("apiKeys.labels.headersOptional")}
+            </span>
+            <textarea
+              class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-xs focus:border-transparent focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-900"
+              onInput={(e) => setHeadersInput(e.currentTarget.value)}
+              placeholder={t("apiKeys.placeholders.providerHeaders")}
+              rows={3}
+              value={headersInput()}
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t("apiKeys.labels.prefixOptional")}
             </span>
             <input
@@ -666,15 +764,12 @@ export function OpenAICompatibleTab(props: OpenAICompatibleTabProps) {
                 : t("apiKeys.actions.addProvider")}
             </Button>
             <Button
-              disabled={
-                testingNewProvider() ||
-                !newOpenaiProvider().baseUrl ||
-                !newOpenaiProvider().apiKeyEntries[0]?.apiKey
-              }
+              disabled={testingNewProvider() || !newOpenaiProvider().baseUrl}
               onClick={() =>
                 handleTestProvider(
                   newOpenaiProvider().baseUrl,
                   newOpenaiProvider().apiKeyEntries[0]?.apiKey || "",
+                  parseHeaders(headersInput()),
                 )
               }
               size="sm"

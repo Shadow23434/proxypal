@@ -8,7 +8,26 @@
       "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/models.go)",
       "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/prompt.go)",
       "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" show b895018f^:internal/provider/gemini-web/media.go)",
-      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" cat-file -p HEAD^{tree})"
+      "Bash(git -C \"E:/Tools/CLIProxyAPIPlus\" cat-file -p HEAD^{tree})",
+      "mcp__plugin_oh-my-claudecode_t__lsp_diagnostics",
+      "Bash(bash \"C:/Users/Admin/.claude/plugins/marketplaces/omc//scripts/setup-progress.sh\" resume)",
+      "Bash(CLAUDE_PLUGIN_ROOT=\"C:/Users/Admin/.claude/plugins/marketplaces/omc\")",
+      "Bash(bash \"$CLAUDE_PLUGIN_ROOT/scripts/setup-claude-md.sh\" local)",
+      "Bash(bash \"$CLAUDE_PLUGIN_ROOT/scripts/setup-progress.sh\" save 2 local)",
+      "Bash(node:*)",
+      "Bash(bash \"$CLAUDE_PLUGIN_ROOT/scripts/setup-progress.sh\" save 3 local)",
+      "Bash(bash \"$CLAUDE_PLUGIN_ROOT/scripts/setup-progress.sh\" save 4 local)",
+      "Bash(claude mcp:*)",
+      "Bash(bash \"$CLAUDE_PLUGIN_ROOT/scripts/setup-progress.sh\" save 6 local)",
+      "mcp__plugin_oh-my-claudecode_t__notepad_write_manual",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm tauri:*)",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 1420 -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | Format-Table -AutoSize; Get-NetTCPConnection -LocalPort 1420 -State Listen | ForEach-Object { Get-Process -Id $_.OwningProcess | Select-Object Id,ProcessName,Path | Format-Table -AutoSize }\")",
+      "Bash(powershell -NoProfile -Command \"$ports = Get-NetTCPConnection -LocalPort 1420 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique; $ports | ForEach-Object { Get-Process -Id $_ | Select-Object Id,ProcessName,Path | Format-Table -AutoSize }\")",
+      "Bash(powershell -NoProfile -Command '$pids = Get-NetTCPConnection -LocalPort 1420 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique; foreach \\($pid in $pids\\) { Get-Process -Id $pid | Select-Object Id, ProcessName, Path | Format-Table -AutoSize }')",
+      "Bash(powershell -NoProfile -Command 'Get-Process -Id 6624,13016 | Select-Object Id, ProcessName, Path | Format-Table -AutoSize')",
+      "Bash(taskkill:*)",
+      "Bash(powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 1420 -State Listen')"
     ]
   }
 }

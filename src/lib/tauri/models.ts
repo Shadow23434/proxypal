@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { OpenAICompatibleProvider } from "./api-keys";
+
 // GPT Reasoning Models (single source of truth from backend)
 export async function getGptReasoningModels(): Promise<string[]> {
   return invoke("get_gpt_reasoning_models");
@@ -209,6 +211,7 @@ export interface AmpOpenAIModel {
 export interface AmpOpenAIProvider {
   apiKey: string;
   baseUrl: string;
+  headers?: Record<string, string>;
   id: string; // Unique identifier (UUID)
   models: AmpOpenAIModel[];
   name: string;
@@ -254,6 +257,14 @@ export async function getAvailableModels(): Promise<AvailableModel[]> {
   return invoke("get_available_models");
 }
 
-export async function fetchOpenaiCompatibleModels(): Promise<OpenAICompatibleProviderModels[]> {
-  return invoke("fetch_openai_compatible_models");
+export async function fetchOpenaiCompatibleModels(
+  providers?: OpenAICompatibleProvider[],
+): Promise<OpenAICompatibleProviderModels[]> {
+  return invoke("fetch_openai_compatible_models", { providers });
+}
+
+export async function fetchOllamaModels(
+  providers?: OpenAICompatibleProvider[],
+): Promise<OpenAICompatibleProviderModels[]> {
+  return invoke("fetch_ollama_models", { providers });
 }

@@ -93,4 +93,6 @@ pub struct OpenAICompatibleProvider {
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_type: Option<String>,
 }

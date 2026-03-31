@@ -28,6 +28,7 @@ const getProviderDisplayName = (ownedBy: string): string => {
     iflow: "iFlow",
     kimi: "Kimi",
     kiro: "Kiro",
+    ollama: "Ollama",
     openai: "OpenAI",
     qwen: "Qwen",
   };
@@ -43,6 +44,7 @@ const getProviderColor = (ownedBy: string): string => {
     iflow: "bg-pink-500",
     kimi: "bg-yellow-500",
     kiro: "bg-teal-500",
+    ollama: "bg-emerald-500",
     openai: "bg-green-500",
     qwen: "bg-cyan-500",
   };

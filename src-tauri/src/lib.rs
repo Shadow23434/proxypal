@@ -422,8 +422,10 @@ pub fn run() {
             commands::usage::import_usage_stats,
             commands::models::get_available_models,
             commands::models::test_openai_provider,
+            commands::models::test_ollama_provider,
             commands::models::test_provider_connection,
             commands::models::fetch_openai_compatible_models,
+            commands::models::fetch_ollama_models,
             // API Keys Management
             commands::api_keys::get_gemini_api_keys,
             commands::api_keys::set_gemini_api_keys,
@@ -451,6 +453,10 @@ pub fn run() {
             commands::api_keys::set_openai_compatible_providers,
             commands::api_keys::add_openai_compatible_provider,
             commands::api_keys::delete_openai_compatible_provider,
+            commands::api_keys::get_ollama_providers,
+            commands::api_keys::set_ollama_providers,
+            commands::api_keys::add_ollama_provider,
+            commands::api_keys::delete_ollama_provider,
             // Auth Files Management
             commands::auth_files::get_auth_files,
             commands::auth_files::upload_auth_file,

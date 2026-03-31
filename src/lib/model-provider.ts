@@ -75,6 +75,9 @@ export const isModelForProvider = (model: ProviderModelLike, provider: string): 
   if (normalizedProvider === "deepseek") {
     return ownedBy === "deepseek" || modelId.includes("deepseek");
   }
+  if (normalizedProvider === "ollama") {
+    return source === "ollama" || ownedBy === "ollama";
+  }
 
   return derivedProvider === normalizedProvider || ownedBy === normalizedProvider || source === normalizedProvider;
 };

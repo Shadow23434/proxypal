@@ -4,13 +4,14 @@ import {
   CodexKeysTab,
   GeminiKeysTab,
   OpenAICompatibleTab,
+  OllamaTab,
   VertexKeysTab,
 } from "../components/api-keys";
 import { Button } from "../components/ui";
 import { useI18n } from "../i18n";
 import { appStore } from "../stores/app";
 
-type TabId = "gemini" | "claude" | "codex" | "openai-compatible" | "vertex";
+type TabId = "gemini" | "claude" | "codex" | "openai-compatible" | "ollama" | "vertex";
 
 interface Tab {
   icon: string;
@@ -23,6 +24,7 @@ const TABS: Tab[] = [
   { icon: "/logos/claude.svg", id: "claude", label: "Claude" },
   { icon: "/logos/openai.svg", id: "codex", label: "Codex" },
   { icon: "/logos/openai.svg", id: "openai-compatible", label: "OpenAI" },
+  { icon: "/logos/ollama.svg", id: "ollama", label: "Ollama" },
   { icon: "/logos/vertex.svg", id: "vertex", label: "Vertex" },
 ];
 
@@ -167,6 +169,15 @@ export function ApiKeysPage() {
 
           <Show when={activeTab() === "openai-compatible"}>
             <OpenAICompatibleTab
+              loading={loading}
+              setLoading={setLoading}
+              setShowAddForm={setShowAddForm}
+              showAddForm={showAddForm}
+            />
+          </Show>
+
+          <Show when={activeTab() === "ollama"}>
+            <OllamaTab
               loading={loading}
               setLoading={setLoading}
               setShowAddForm={setShowAddForm}

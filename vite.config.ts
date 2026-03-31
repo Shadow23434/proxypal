@@ -9,6 +9,9 @@ export default defineConfig(async () => ({
   // Use relative paths so assets resolve under tauri:// protocol (fixes white screen on Linux AppImage)
   base: "./",
   plugins: [solid()],
+  optimizeDeps: {
+    entries: ["index.html"],
+  },
   test: {
     environment: "jsdom",
     globals: true,
